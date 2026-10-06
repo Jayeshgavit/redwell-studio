@@ -3,6 +3,7 @@ node_modules/
 
 # Next.js build output
 .next/
+.next-*/
 out/
 build/
 
@@ -14,11 +15,16 @@ dist/
 .env.*
 !.env.example
 !.env.*.example
+!.env.sample
+!.env.*.sample
+!.env.template
+!.env.*.template
 
 # Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
+yarn-error.log*
 pnpm-debug.log*
 
 # TypeScript build info
@@ -27,6 +33,11 @@ pnpm-debug.log*
 # Operating system and editor files
 .DS_Store
 Thumbs.db
+Desktop.ini
+._*
+*.swp
+*.swo
+*~
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
