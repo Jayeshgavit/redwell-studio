@@ -42,8 +42,8 @@ export interface ViewportControls {
   resetZoom: () => void;
 }
 
-function clampZoom(z: number) {
-  return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+function clampZoom(z: number, max = ZOOM_MAX) {
+  return Math.max(ZOOM_MIN, Math.min(max, z));
 }
 
 function snapNearOne(z: number): number {
@@ -54,11 +54,10 @@ function snapNearOne(z: number): number {
 
 export function getFitZoom(containerWidth: number, containerHeight: number, canvasWidth: number, canvasHeight: number): number | null {
   if (![containerWidth, containerHeight, canvasWidth, canvasHeight].every((value) => Number.isFinite(value) && value > 0)) return null;
-  // Reserve 4% on each edge (about 85% area for matching aspect ratios),
-  // with room for selection handles on laptops and a smaller reserve in tiny stages.
-  const inset = (size: number) => Math.min(size / 4, Math.max(16, size * 0.04));
+  // The measured stage already excludes editor chrome. Reserve only 16 CSS px
+  // per edge for handles/shadows, reducing that margin for very small stages.
+  const inset = (size: number) => Math.min(size / 4, 16);
   return Math.min(
-    ZOOM_MAX,
     (containerWidth - inset(containerWidth) * 2) / canvasWidth,
     (containerHeight - inset(containerHeight) * 2) / canvasHeight
   );
@@ -82,14 +81,14 @@ export function useViewport(): ViewportControls {
 
   const zoomIn = useCallback(() => {
     setState((prev) => {
-      const next = snapNearOne(clampZoom(prev.zoom + ZOOM_STEP));
+      const next = Math.max(prev.zoom, snapNearOne(clampZoom(prev.zoom + ZOOM_STEP)));
       return { ...prev, zoom: next, isFitted: false };
     });
   }, []);
 
   const zoomOut = useCallback(() => {
     setState((prev) => {
-      const next = Math.min(prev.zoom, snapNearOne(clampZoom(prev.zoom - ZOOM_STEP)));
+      const next = Math.min(prev.zoom, snapNearOne(clampZoom(prev.zoom - ZOOM_STEP, Math.max(ZOOM_MAX, prev.zoom))));
       return { ...prev, zoom: next, isFitted: false };
     });
   }, []);
@@ -103,8 +102,8 @@ export function useViewport(): ViewportControls {
   const zoomAround = useCallback(
     (delta: number, cx: number, cy: number, containerWidth: number, containerHeight: number) => {
       setState((prev) => {
-        const requestedZoom = snapNearOne(clampZoom(prev.zoom + delta));
-        const nextZoom = delta < 0 ? Math.min(prev.zoom, requestedZoom) : requestedZoom;
+        const requestedZoom = snapNearOne(clampZoom(prev.zoom + delta, Math.max(ZOOM_MAX, prev.zoom)));
+        const nextZoom = delta < 0 ? Math.min(prev.zoom, requestedZoom) : Math.max(prev.zoom, requestedZoom);
         if (nextZoom === prev.zoom) return prev;
 
         // Offset from container centre in CSS pixels
