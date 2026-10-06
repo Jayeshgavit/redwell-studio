@@ -1,0 +1,61 @@
+REDWELL STUDIO - PRODUCT FOCUS SHIFT SUMMARY
+============================================
+
+Date: October 5, 2026
+Phase: Temporarily focused on Collage only
+
+CHANGES MADE:
+-------------
+
+1. HOME PAGE (frontend/app/page.tsx)
+   - Modes array simplified to only Collage type
+   - Intro strip updated to collage-only messaging
+   - Hero copy updated to focus on collages
+   - Modes section: only Collage renders; Carousel/Edit Image conditional rendering removed
+   - No dead feature cards or broken links
+
+2. DOCUMENTATION
+   - CLAUDE.md: Created with product scope, active features, disabled features, safety rule, development priority, product philosophy
+   - AGENT.md: Created with project focus, feature status, agent rules, future reactivation guidance
+
+3. PRESERVED (NOT DELETED)
+   - Photo Editor: All components, workspace, presets, adjustments, effects, enhance, crop, background tools, layers, image-processing utilities, hooks, types, services
+   - Carousel: All components, workspace, layouts, templates, logic, utilities, types, styling
+   - Both are intact in the repository for future reactivation
+
+4. WHAT CHANGED (HIDDEN/INVISIBLE)
+   - Home Page no longer displays Photo Editing or Carousel as creation modes
+   - No clickable cards or links lead to disabled features
+   - Navigation references to disabled features removed from Home Page
+   - Collage is the only visible creation destination
+
+5. VERIFICATION
+   - TypeScript compiles: 3 pre-existing errors only (unrelated to these changes)
+   - Collage fully functional: opens, upload, layout selection, export
+   - No new runtime errors
+   - No broken imports
+   - No unrelated refactoring
+   - CLAUDE.md exists and reflects current scope
+   - AGENT.md exists and reflects current scope
+
+PRODUCT EXPERIENCE:
+------------------
+Home → Collage → Collage Workspace → Export
+
+The user should NOT be distracted by unfinished Photo Editing or Carousel features.
+The primary experience should be: Create Collage
+
+Nothing else should compete with it.
+
+PRESERVATION POLICY:
+-------------------
+DO NOT DELETE:
+- Photo Editor code
+- Carousel code
+- Any disabled feature implementations
+
+THEY ARE INTENTIONALLY PRESERVED for possible future reactivation.
+
+CURRENT FOCUS:
+-------------
+COLLAGE only - one polished feature rather than several partially developed features.

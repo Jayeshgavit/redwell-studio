@@ -1,0 +1,118 @@
+[33mcommit a9a4c4552df88f8412fd672968ef026149630f68[m
+Author: Jayeshgavit <gavitjayesh777@gmail.com>
+Date:   Mon Oct 5 09:27:13 2026 +0530
+
+    Agent host session 4b3abd7b-56f3-45f3-8ec6-0653b94faede - baseline checkpoint
+
+ .gitignore                                         |   33 [32m+[m
+ README.md                                          |    1 [32m+[m
+ frontend/.next-phase-c1-check/BUILD_ID             |    1 [32m+[m
+ .../.next-phase-c1-check/app-build-manifest.json   |   33 [32m+[m
+ .../app-path-routes-manifest.json                  |    5 [32m+[m
+ frontend/.next-phase-c1-check/build-manifest.json  |   33 [32m+[m
+ frontend/.next-phase-c1-check/cache/.previewinfo   |    1 [32m+[m
+ frontend/.next-phase-c1-check/cache/.rscinfo       |    1 [32m+[m
+ .../cache/webpack/client-production/0.pack         |  Bin [31m0[m -> [32m27192052[m bytes
+ .../cache/webpack/client-production/index.pack     |  Bin [31m0[m -> [32m2213597[m bytes
+ .../cache/webpack/edge-server-production/0.pack    |  Bin [31m0[m -> [32m276[m bytes
+ .../webpack/edge-server-production/index.pack      |  Bin [31m0[m -> [32m2487[m bytes
+ .../cache/webpack/server-production/0.pack         |  Bin [31m0[m -> [32m25820983[m bytes
+ .../cache/webpack/server-production/index.pack     |  Bin [31m0[m -> [32m3964350[m bytes
+ .../diagnostics/build-diagnostics.json             |    6 [32m+[m
+ .../diagnostics/framework.json                     |    1 [32m+[m
+ frontend/.next-phase-c1-check/export-marker.json   |    6 [32m+[m
+ frontend/.next-phase-c1-check/images-manifest.json |   58 [32m+[m
+ .../next-minimal-server.js.nft.json                |    1 [32m+[m
+ .../.next-phase-c1-check/next-server.js.nft.json   |    1 [32m+[m
+ frontend/.next-phase-c1-check/package.json         |    1 [32m+[m
+ .../.next-phase-c1-check/prerender-manifest.json   |   85 [32m+[m
+ .../react-loadable-manifest.json                   |   14 [32m+[m
+ .../required-server-files.json                     |  319 [32m++[m
+ frontend/.next-phase-c1-check/routes-manifest.json |   59 [32m+[m
+ .../server/app-paths-manifest.json                 |    5 [32m+[m
+ .../server/app/_not-found.html                     |    1 [32m+[m
+ .../server/app/_not-found.meta                     |   16 [32m+[m
+ .../.next-phase-c1-check/server/app/_not-found.rsc |   15 [32m+[m
+ .../server/app/_not-found/page.js                  |    2 [32m+[m
+ .../server/app/_not-found/page.js.nft.json         |    1 [32m+[m
+ .../_not-found/page_client-reference-manifest.js   |    1 [32m+[m
+ .../.next-phase-c1-check/server/app/create.html    |    1 [32m+[m
+ .../.next-phase-c1-check/server/app/create.meta    |   15 [32m+[m
+ .../.next-phase-c1-check/server/app/create.rsc     |   16 [32m+[m
+ .../.next-phase-c1-check/server/app/create/page.js |    2 [32m+[m
+ .../server/app/create/page.js.nft.json             |    1 [32m+[m
+ .../app/create/page_client-reference-manifest.js   |    1 [32m+[m
+ .../.next-phase-c1-check/server/app/index.html     |    1 [32m+[m
+ .../.next-phase-c1-check/server/app/index.meta     |   15 [32m+[m
+ frontend/.next-phase-c1-check/server/app/index.rsc |   16 [32m+[m
+ frontend/.next-phase-c1-check/server/app/page.js   |    2 [32m+[m
+ .../server/app/page.js.nft.json                    |    1 [32m+[m
+ .../server/app/page_client-reference-manifest.js   |    1 [32m+[m
+ frontend/.next-phase-c1-check/server/chunks/571.js |   32 [32m+[m
+ frontend/.next-phase-c1-check/server/chunks/611.js |    6 [32m+[m
+ .../server/functions-config-manifest.json          |    4 [32m+[m
+ .../server/interception-route-rewrite-manifest.js  |    1 [32m+[m
+ .../server/middleware-build-manifest.js            |    1 [32m+[m
+ .../server/middleware-manifest.json                |    6 [32m+[m
+ .../server/middleware-react-loadable-manifest.js   |    1 [32m+[m
+ .../server/next-font-manifest.js                   |    1 [32m+[m
+ .../server/next-font-manifest.json                 |    1 [32m+[m
+ .../server/pages-manifest.json                     |    6 [32m+[m
+ .../.next-phase-c1-check/server/pages/404.html     |    1 [32m+[m
+ .../.next-phase-c1-check/server/pages/500.html     |    1 [32m+[m
+ frontend/.next-phase-c1-check/server/pages/_app.js |    1 [32m+[m
+ .../server/pages/_app.js.nft.json                  |    1 [32m+[m
+ .../.next-phase-c1-check/server/pages/_document.js |    1 [32m+[m
+ .../server/pages/_document.js.nft.json             |    1 [32m+[m
+ .../.next-phase-c1-check/server/pages/_error.js    |   19 [32m+[m
+ .../server/pages/_error.js.nft.json                |    1 [32m+[m
+ .../server/server-reference-manifest.js            |    1 [32m+[m
+ .../server/server-reference-manifest.json          |    1 [32m+[m
+ .../.next-phase-c1-check/server/webpack-runtime.js |    1 [32m+[m
+ .../static/-BPNkG9bKCm_y1a5B3MwK/_buildManifest.js |    1 [32m+[m
+ .../static/-BPNkG9bKCm_y1a5B3MwK/_ssgManifest.js   |    1 [32m+[m
+ .../static/chunks/139.7a5a8e93a21948c1.js          |    1 [32m+[m
+ .../static/chunks/255-ce8c7c75002f810b.js          |    1 [32m+[m
+ .../static/chunks/4bd1b696-c023c6e3521b1417.js     |    1 [32m+[m
+ .../static/chunks/646.f342b7cffc01feb0.js          |    1 [32m+[m
+ .../chunks/app/_not-found/page-90ad51a5ef602a34.js |    1 [32m+[m
+ .../chunks/app/create/page-b1bb91d4db7ffc5b.js     |    1 [32m+[m
+ .../static/chunks/app/layout-78bcd8af12f033f3.js   |    1 [32m+[m
+ .../static/chunks/app/page-23091be735374d2d.js     |    1 [32m+[m
+ .../static/chunks/framework-4891de286d38ef96.js    |    1 [32m+[m
+ .../static/chunks/main-0e28129e5718b5ec.js         |    1 [32m+[m
+ .../static/chunks/main-app-5f8fffd63f8f1efb.js     |    1 [32m+[m
+ .../static/chunks/pages/_app-82835f42865034fa.js   |    1 [32m+[m
+ .../static/chunks/pages/_error-013f4188946cdd04.js |    1 [32m+[m
+ .../static/chunks/polyfills-42372ed130431b0a.js    |    1 [32m+[m
+ .../static/chunks/webpack-2bc309fe597aff29.js      |    1 [32m+[m
+ .../static/css/12b073d077761054.css                |    3 [32m+[m
+ frontend/.next-phase-c1-check/trace                |   10 [32m+[m
+ .../.next-phase-c1-check/types/app/create/page.ts  |   84 [32m+[m
+ frontend/.next-phase-c1-check/types/app/layout.ts  |   84 [32m+[m
+ frontend/.next-phase-c1-check/types/app/page.ts    |   84 [32m+[m
+ .../.next-phase-c1-check/types/cache-life.d.ts     |  141 [32m+[m
+ frontend/.next-phase-c1-check/types/package.json   |    1 [32m+[m
+ frontend/.next-phase-c1-check/types/routes.d.ts    |   58 [32m+[m
+ frontend/.next-phase-c1-check/types/validator.ts   |   70 [32m+[m
+ frontend/.next-phase-c4-check/BUILD_ID             |    1 [32m+[m
+ .../.next-phase-c4-check/app-build-manifest.json   |   33 [32m+[m
+ .../app-path-routes-manifest.json                  |    5 [32m+[m
+ frontend/.next-phase-c4-check/build-manifest.json  |   33 [32m+[m
+ frontend/.next-phase-c4-check/cache/.previewinfo   |    1 [32m+[m
+ frontend/.next-phase-c4-check/cache/.rscinfo       |    1 [32m+[m
+ .../cache/webpack/client-production/0.pack         |  Bin [31m0[m -> [32m28873155[m bytes
+ .../cache/webpack/client-production/index.pack     |  Bin [31m0[m -> [32m2236942[m bytes
+ .../cache/webpack/edge-server-production/0.pack    |  Bin [31m0[m -> [32m276[m bytes
+ .../webpack/edge-server-production/index.pack      |  Bin [31m0[m -> [32m2487[m bytes
+ .../cache/webpack/server-production/0.pack         |  Bin [31m0[m -> [32m27402232[m bytes
+ .../cache/webpack/server-production/index.pack     |  Bin [31m0[m -> [32m3995926[m bytes
+ .../diagnostics/build-diagnostics.json             |    6 [32m+[m
+ .../diagnostics/framework.json                     |    1 [32m+[m
+ frontend/.next-phase-c4-check/export-marker.json   |    6 [32m+[m
+ frontend/.next-phase-c4-check/images-manifest.json |   58 [32m+[m
+ .../next-minimal-server.js.nft.json                |    1 [32m+[m
+ .../.next-phase-c4-check/next-server.js.nft.json   |    1 [32m+[m
+ frontend/.next-phase-c4-check/package.json         |    1 [32m+[m
+ .../.next-phase-c4-check/prerender-manifest.json   |   85 [32m+[m
+ .../react-loadab
