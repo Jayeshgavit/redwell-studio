@@ -7,7 +7,7 @@
  * controls the CSS transform applied to the visual container.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 4;
@@ -18,6 +18,8 @@ export interface ViewportState {
   zoom: number;
   panX: number;
   panY: number;
+  /** Follow workspace changes until the user manually zooms or pans. */
+  isFitted: boolean;
 }
 
 export interface ViewportControls {
@@ -50,32 +52,45 @@ function snapNearOne(z: number): number {
   return Math.abs(z - 1) < 0.01 ? 1 : z;
 }
 
+export function getFitZoom(containerWidth: number, containerHeight: number, canvasWidth: number, canvasHeight: number): number | null {
+  if (![containerWidth, containerHeight, canvasWidth, canvasHeight].every((value) => Number.isFinite(value) && value > 0)) return null;
+  // Reserve 4% on each edge (about 85% area for matching aspect ratios),
+  // with room for selection handles on laptops and a smaller reserve in tiny stages.
+  const inset = (size: number) => Math.min(size / 4, Math.max(16, size * 0.04));
+  return Math.min(
+    ZOOM_MAX,
+    (containerWidth - inset(containerWidth) * 2) / canvasWidth,
+    (containerHeight - inset(containerHeight) * 2) / canvasHeight
+  );
+}
+
 export function useViewport(): ViewportControls {
   const [state, setState] = useState<ViewportState>({
     zoom: ZOOM_DEFAULT,
     panX: 0,
     panY: 0,
+    isFitted: true,
   });
 
   const setZoom = useCallback((zoom: number) => {
-    setState((prev) => ({ ...prev, zoom: snapNearOne(clampZoom(zoom)) }));
+    setState((prev) => ({ ...prev, zoom: snapNearOne(clampZoom(zoom)), isFitted: false }));
   }, []);
 
   const setPan = useCallback((x: number, y: number) => {
-    setState((prev) => ({ ...prev, panX: x, panY: y }));
+    setState((prev) => ({ ...prev, panX: x, panY: y, isFitted: false }));
   }, []);
 
   const zoomIn = useCallback(() => {
     setState((prev) => {
       const next = snapNearOne(clampZoom(prev.zoom + ZOOM_STEP));
-      return { ...prev, zoom: next };
+      return { ...prev, zoom: next, isFitted: false };
     });
   }, []);
 
   const zoomOut = useCallback(() => {
     setState((prev) => {
-      const next = snapNearOne(clampZoom(prev.zoom - ZOOM_STEP));
-      return { ...prev, zoom: next };
+      const next = Math.min(prev.zoom, snapNearOne(clampZoom(prev.zoom - ZOOM_STEP)));
+      return { ...prev, zoom: next, isFitted: false };
     });
   }, []);
 
@@ -88,7 +103,8 @@ export function useViewport(): ViewportControls {
   const zoomAround = useCallback(
     (delta: number, cx: number, cy: number, containerWidth: number, containerHeight: number) => {
       setState((prev) => {
-        const nextZoom = snapNearOne(clampZoom(prev.zoom + delta));
+        const requestedZoom = snapNearOne(clampZoom(prev.zoom + delta));
+        const nextZoom = delta < 0 ? Math.min(prev.zoom, requestedZoom) : requestedZoom;
         if (nextZoom === prev.zoom) return prev;
 
         // Offset from container centre in CSS pixels
@@ -100,30 +116,31 @@ export function useViewport(): ViewportControls {
         const nextPanX = ox + (prev.panX - ox) * scale;
         const nextPanY = oy + (prev.panY - oy) * scale;
 
-        return { zoom: nextZoom, panX: nextPanX, panY: nextPanY };
+        return { zoom: nextZoom, panX: nextPanX, panY: nextPanY, isFitted: false };
       });
     },
     []
   );
 
   const pan = useCallback((dx: number, dy: number) => {
-    setState((prev) => ({ ...prev, panX: prev.panX + dx, panY: prev.panY + dy }));
+    setState((prev) => ({ ...prev, panX: prev.panX + dx, panY: prev.panY + dy, isFitted: false }));
   }, []);
 
   const fitToContainer = useCallback(
     (containerWidth: number, containerHeight: number, canvasWidth: number, canvasHeight: number) => {
-      if (containerWidth <= 0 || containerHeight <= 0 || canvasWidth <= 0 || canvasHeight <= 0) return;
-      const padding = 16; // visual breathing room (px)
-      const scaleW = (containerWidth - padding * 2) / canvasWidth;
-      const scaleH = (containerHeight - padding * 2) / canvasHeight;
-      const zoom = snapNearOne(clampZoom(Math.min(scaleW, scaleH)));
-      setState({ zoom, panX: 0, panY: 0 });
+      const zoom = getFitZoom(containerWidth, containerHeight, canvasWidth, canvasHeight);
+      if (zoom === null) return;
+      // Fit may go below the manual zoom minimum so short windows never clip.
+      // Do not snap near 100%: rounding upward can exceed the measured fit.
+      setState((prev) => prev.isFitted && prev.zoom === zoom && prev.panX === 0 && prev.panY === 0
+        ? prev
+        : { zoom, panX: 0, panY: 0, isFitted: true });
     },
     []
   );
 
   const resetZoom = useCallback(() => {
-    setState({ zoom: ZOOM_DEFAULT, panX: 0, panY: 0 });
+    setState({ zoom: ZOOM_DEFAULT, panX: 0, panY: 0, isFitted: false });
   }, []);
 
   return { state, setZoom, setPan, zoomIn, zoomOut, zoomAround, pan, fitToContainer, resetZoom };

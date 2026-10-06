@@ -2,7 +2,7 @@
 
 import { resolveCreativeLayout } from "./carousel-composition";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { IconPalette, IconChevronDown, IconLayoutCollage } from "@tabler/icons-react";
 import { TopBar } from "./top-bar";
 import { Toolbar } from "./toolbar";
@@ -35,7 +35,6 @@ import type { ArtworkLayerItem } from "./artwork-layers-panel";
 import { useViewport } from "./use-viewport";
 import { CanvasViewport } from "./canvas-viewport";
 import { CanvasViewportControls } from "./canvas-viewport-controls";
-import { MAX_CANVAS_WIDTH } from "./fabric-canvas";
 import {
   parseLivePreviewMessage,
   type LivePreviewMessage,
@@ -393,24 +392,34 @@ function EditorContent() {
       slide.photos.length === 0 && slide.elements.length === 0 && !(slide.storyText ?? []).some((item) => item.text.trim())
     );
 
-  // Compute the natural (unzoomed) canvas pixel dimensions for fit-to-canvas
-  const naturalCanvasWidth = canvasContainerSize
-    ? Math.max(1, Math.min(MAX_CANVAS_WIDTH, canvasContainerSize.width - 32, (canvasContainerSize.height - 32) * currentFormat.ratio))
-    : MAX_CANVAS_WIDTH;
-  const naturalCanvasHeight = naturalCanvasWidth / currentFormat.ratio;
+  // Both modes render at document dimensions: 100% remains stable on resize.
+  const { fitToContainer } = viewport;
+  const { width: canvasWidth, height: canvasHeight } = currentFormat;
+  const previousCanvasRef = useRef("");
+  const canvasKey = `${documentMode}:${canvasWidth}:${canvasHeight}`;
 
   const handleFitToCanvas = useCallback(() => {
     if (!canvasContainerSize) return;
-    viewport.fitToContainer(
+    fitToContainer(
       canvasContainerSize.width,
       canvasContainerSize.height,
-      naturalCanvasWidth,
-      naturalCanvasHeight
+      canvasWidth,
+      canvasHeight
     );
-  }, [canvasContainerSize, naturalCanvasWidth, naturalCanvasHeight, viewport]);
+  }, [canvasContainerSize, canvasWidth, canvasHeight, fitToContainer]);
+
+  useLayoutEffect(() => {
+    if (!canvasContainerSize || canvasContainerSize.width <= 0 || canvasContainerSize.height <= 0) return;
+    // ResizeObserver measures the stage after chrome, dock and filmstrip layout.
+    // Keep Fit live, but leave manual zoom/pan alone until Fit or a format/mode change.
+    if (viewport.state.isFitted || previousCanvasRef.current !== canvasKey) handleFitToCanvas();
+    previousCanvasRef.current = canvasKey;
+  }, [canvasContainerSize, canvasKey, handleFitToCanvas, viewport.state.isFitted]);
 
   const handleContainerResize = useCallback((width: number, height: number) => {
-    setCanvasContainerSize({ width, height });
+    setCanvasContainerSize((previous) => previous?.width === width && previous.height === height
+      ? previous
+      : { width, height });
   }, []);
 
   const handleOpenPanel = (tool: EditorTool) => {
@@ -816,7 +825,7 @@ function EditorContent() {
                   onAddPhotoToSlot={(slotIndex) =>
                     photoToolbarRef.current?.openPickerForSlot(slotIndex)
                   }
-                  containerSize={canvasContainerSize ?? undefined}
+                  naturalSize
                 />
               </CanvasViewport>
             </div>

@@ -16,6 +16,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -54,12 +55,14 @@ export function CanvasViewport({ children, viewport, onContainerResize }: Canvas
   const [cursor, setCursor] = useState<string | undefined>(undefined);
 
   // ── ResizeObserver ──────────────────────────────────────────────────────
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const ro = new ResizeObserver(() => {
+    const measure = () => {
       onContainerResize?.(container.clientWidth, container.clientHeight);
-    });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(container);
     return () => ro.disconnect();
   }, [onContainerResize]);

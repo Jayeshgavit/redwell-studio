@@ -29,10 +29,10 @@ interface FabricCanvasComponentProps {
   onSelectStoryText: (textId: string | null) => void;
   onSwapSlots: (fromSlotIndex: number, toSlotIndex: number) => void;
   readOnly?: boolean;
-  /** When provided, the component uses these dimensions instead of measuring
-   * its own container. Used by the viewport zoom system so the canvas renders
-   * at a fixed natural size. */
+  /** Fit to these dimensions instead of measuring its own container (live preview). */
   containerSize?: { width: number; height: number };
+  /** Render at document dimensions; the editor viewport supplies fit/zoom. */
+  naturalSize?: boolean;
 }
 
 interface ViewportSize {
@@ -104,6 +104,7 @@ export function FabricCanvasComponent({
   onSwapSlots,
   readOnly = false,
   containerSize,
+  naturalSize = false,
 }: FabricCanvasComponentProps) {
   const {
     photos,
@@ -177,9 +178,9 @@ export function FabricCanvasComponent({
       .map(({ index }, order) => [index, order])
   );
 
-  // Internal resize observer — only active when no external containerSize is provided
+  // Standalone measurement; editor zoom and live preview supply their own sizing.
   useEffect(() => {
-    if (containerSize) return; // parent is supplying dimensions
+    if (containerSize || naturalSize) return; // parent is supplying dimensions or zoom
     const viewport = viewportRef.current;
     if (!viewport) return;
 
@@ -193,7 +194,7 @@ export function FabricCanvasComponent({
     resizeObserver.observe(viewport);
     return () => resizeObserver.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!containerSize]);
+  }, [!!containerSize, naturalSize]);
 
   // Effective viewport dimensions: prefer the externally-supplied value
   const viewportSize = containerSize
@@ -203,7 +204,7 @@ export function FabricCanvasComponent({
       }
     : internalViewportSize;
 
-  const canvasWidth = viewportSize
+  const canvasWidth = naturalSize ? format.width : viewportSize
     ? Math.max(1, Math.min(MAX_CANVAS_WIDTH, viewportSize.width, viewportSize.height * format.ratio))
     : `min(${MAX_CANVAS_WIDTH}px, calc(100vw - 2rem))`;
   const measuredCanvasWidth =
@@ -251,10 +252,10 @@ export function FabricCanvasComponent({
   };
 
   return (
-    // When containerSize is provided the parent (CanvasViewport) handles the
+    // When externally sized the parent handles the
     // outer layout; we only render the canvas + helpers.
     // When not provided (standalone / legacy use) we keep the original wrapper.
-    <div ref={containerSize ? undefined : viewportRef} className={`${containerSize ? "flex flex-col items-center" : "flex h-full w-full items-center justify-center overflow-auto bg-gray-100 p-4"} ${readOnly ? "pointer-events-none select-none" : ""}`}>
+    <div ref={containerSize || naturalSize ? undefined : viewportRef} className={`${containerSize || naturalSize ? "flex flex-col items-center" : "flex h-full w-full items-center justify-center overflow-auto bg-gray-100 p-4"} ${readOnly ? "pointer-events-none select-none" : ""}`}>
       <div className="w-fit max-w-full shrink-0">
         <div
           aria-label={`${format.name} ${documentMode === "carousel" ? "carousel slide" : "collage"} canvas`}
