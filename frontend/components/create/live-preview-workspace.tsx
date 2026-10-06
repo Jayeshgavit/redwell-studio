@@ -6,6 +6,7 @@ import {
   type LivePreviewMessage,
   type LivePreviewState,
 } from "./live-preview-protocol";
+import { getArtworkImageSources, remapArtworkImageSources } from "./artwork-composition";
 import { PhotoProvider } from "./photo-context";
 import { FabricCanvasComponent } from "./fabric-canvas";
 
@@ -53,22 +54,16 @@ export function LivePreviewWorkspace() {
           photoAssetUrlsRef.current.set(message.source, URL.createObjectURL(message.blob));
         }
       } else if (message.type === "state") {
-        const missingSource = message.state.composition.photos.find(
-          (photo) => photo.src.startsWith("blob:") && !photoAssetUrlsRef.current.has(photo.src)
+        const missingSource = getArtworkImageSources(message.state.composition).find(
+          (source) => source.startsWith("blob:") && !photoAssetUrlsRef.current.has(source)
         );
         if (missingSource) {
-          setError("A photo asset is missing from the live preview. Reopen Preview to resync it.");
+          setError("An image asset is missing from the live preview. Reopen Preview to resync it.");
           return;
         }
         setPreviewState({
           ...message.state,
-          composition: {
-            ...message.state.composition,
-            photos: message.state.composition.photos.map((photo) => ({
-              ...photo,
-              src: photoAssetUrlsRef.current.get(photo.src) ?? photo.src,
-            })),
-          },
+          composition: remapArtworkImageSources(message.state.composition, photoAssetUrlsRef.current),
         });
         setIsConnected(true);
         setError(null);
@@ -98,7 +93,7 @@ export function LivePreviewWorkspace() {
   }, []);
 
   useEffect(() => {
-    const activeObjectUrls = new Set(previewState?.composition.photos.map((photo) => photo.src) ?? []);
+    const activeObjectUrls = new Set(previewState ? getArtworkImageSources(previewState.composition) : []);
     photoAssetUrlsRef.current.forEach((url, source) => {
       if (activeObjectUrls.has(url)) return;
       URL.revokeObjectURL(url);

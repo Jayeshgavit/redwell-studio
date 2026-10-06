@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveCreativeLayout } from "./carousel-composition";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CANVAS_FORMATS, COLLAGE_LAYOUTS, type CanvasElement, type CanvasFormat, type CarouselState, type CarouselStoryTextItem, type CollageStyle, type DocumentMode, type LayoutDefinition } from "@/types/editor";
 import type { Photo } from "./photo-context";
@@ -49,7 +51,7 @@ export function ExportDialog({
   const [imageFormat, setImageFormat] = useState<ExportImageFormat>("png");
   const [scale, setScale] = useState<ExportScale>(1);
   const [quality, setQuality] = useState(90);
-  const [carouselScope, setCarouselScope] = useState<"current" | "all">("current");
+  const [carouselScope, setCarouselScope] = useState<"current" | "all">(documentMode === "carousel" ? "all" : "current");
   const [allSlidesDelivery, setAllSlidesDelivery] = useState<"files" | "zip">("zip");
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
@@ -67,14 +69,10 @@ export function ExportDialog({
     () => [...(carousel?.slides ?? [])].sort((first, second) => first.order - second.order),
     [carousel?.slides]
   );
-  const carouselSlidesWithPhotos = useMemo(
-    () => carouselSlides.filter((slide) => {
-      const assignedIds = new Set(Object.values(slide.slotAssignments));
-      return slide.photos.some((photo) => assignedIds.has(photo.id));
-    }),
-    [carouselSlides]
-  );
   const activeSlideIndex = Math.max(0, carouselSlides.findIndex((slide) => slide.id === carousel?.activeSlideId));
+  const assignedPhotoIds = new Set(Object.values(slotAssignments));
+  const unplacedPhotoCount = photos.filter((photo) => !assignedPhotoIds.has(photo.id)).length;
+  const emptySlotCount = layout.cells.filter((_, index) => !photos.some((photo) => photo.id === slotAssignments[index])).length;
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement
@@ -135,18 +133,15 @@ export function ExportDialog({
         downloadExport(blob, filename);
       } else {
         const slides = carouselScope === "all"
-          ? carouselSlidesWithPhotos
+          ? carouselSlides
           : carouselSlides.slice(activeSlideIndex, activeSlideIndex + 1);
-        if (slides.length === 0) throw new Error("No slides contain an assigned photo to export.");
-        if (carouselScope === "current" && !carouselSlidesWithPhotos.some((slide) => slide.id === slides[0].id)) {
-          throw new Error("The current slide has no assigned photo to export.");
-        }
+        if (slides.length === 0) throw new Error("There are no slides to export.");
         const exports = [] as { filename: string; blob: Blob }[];
         for (const [index, slide] of slides.entries()) {
-          const sourceIndex = carouselScope === "all" ? index : activeSlideIndex;
+          const sourceIndex = slide.order;
           setProgress(`Rendering slide ${index + 1} of ${slides.length}...`);
           const slideFormat = CANVAS_FORMATS.find((candidate) => candidate.id === slide.canvasFormatId) ?? format;
-          const slideLayout = COLLAGE_LAYOUTS.find((candidate) => candidate.id === slide.selectedLayoutId) ?? layout;
+          const slideLayout = resolveCreativeLayout(slide.selectedLayoutId) ?? COLLAGE_LAYOUTS[0];
           const blob = await createCollageExport({
             format: slideFormat,
             layout: slideLayout,
@@ -212,6 +207,13 @@ export function ExportDialog({
         </div>
 
         <div className="mt-5 space-y-5">
+          {documentMode === "collage" && (unplacedPhotoCount > 0 || emptySlotCount > 0) && (
+            <div className="border-l-2 border-brand-accent bg-brand-paper px-3 py-2 text-xs leading-relaxed text-brand-muted">
+              {emptySlotCount > 0 && <p>{emptySlotCount} empty {emptySlotCount === 1 ? "slot will" : "slots will"} remain in the downloaded artwork.</p>}
+              {unplacedPhotoCount > 0 && <p>{unplacedPhotoCount} uploaded {unplacedPhotoCount === 1 ? "photo is" : "photos are"} outside this layout and will not be exported.</p>}
+              <p className="mt-1">Use Preview to check your composition before downloading.</p>
+            </div>
+          )}
           {documentMode === "carousel" && (
             <fieldset>
               <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-muted">Slides</legend>
@@ -219,7 +221,7 @@ export function ExportDialog({
                 {(["current", "all"] as const).map((scope) => (
                   <button key={scope} type="button" disabled={isExporting} onClick={() => setCarouselScope(scope)} aria-pressed={carouselScope === scope}
                     className={`min-h-10 rounded-lg border px-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-accent ${carouselScope === scope ? "border-brand-accent bg-brand-accent-soft text-brand-accent-hover" : "border-brand-border bg-brand-surface text-brand-ink hover:bg-brand-paper"}`}>
-            {scope === "current" ? `Current slide · ${activeSlideIndex + 1}` : `All slides · ${carouselSlidesWithPhotos.length}`}
+            {scope === "current" ? `Current slide · ${activeSlideIndex + 1}` : `All slides · ${carouselSlides.length}`}
                   </button>
                 ))}
               </div>

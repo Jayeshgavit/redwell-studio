@@ -9,6 +9,8 @@ import {
   resolvePhotoFilters,
 } from "./photo-filters";
 import type { ResolvedPhotoFilters } from "./photo-filters";
+import { wrapCarouselText } from "./carousel-text-layout";
+import { getActiveBackgroundImage, getBackgroundImageRect } from "./canvas-background";
 
 export type ExportImageFormat = "png" | "jpg" | "webp";
 export type ExportScale = 1 | 2 | 3;
@@ -66,7 +68,8 @@ export async function createCollageExport(
   onProgress("Rendering artwork...");
   await nextPaint();
 
-  const photoImages = await loadUniqueImages(usedPhotos.map((photo) => photo.src));
+  const backgroundImage = getActiveBackgroundImage(snapshot.collageStyle);
+  const photoImages = await loadUniqueImages([...usedPhotos.map((photo) => photo.src), ...(backgroundImage ? [backgroundImage.src] : [])]);
   const elementImages = await Promise.all(
     snapshot.elements
       .filter((element) => element.visible !== false)
@@ -117,6 +120,16 @@ export async function createCollageExport(
   const grainPattern = usedPhotos.some((photo) => (photo.filters?.grain ?? 0) > 0)
     ? createGrainPattern(context)
     : null;
+  if (backgroundImage && innerWidth > 0 && innerHeight > 0) {
+    const image = photoImages.get(backgroundImage.src);
+    if (image) {
+      const rect = getBackgroundImageRect(backgroundImage, innerWidth, innerHeight);
+      context.save();
+      context.globalAlpha = backgroundImage.opacity;
+      context.drawImage(image, borderWidth + rect.x, borderWidth + rect.y, rect.width, rect.height);
+      context.restore();
+    }
+  }
   const slotOrder = new Map(snapshot.layout.cells
     .map((cell, slotIndex) => ({ cell, slotIndex }))
     .sort((first, second) =>
@@ -148,7 +161,7 @@ export async function createCollageExport(
         width,
         height,
         radius,
-        snapshot.collageStyle.backgroundColor
+        backgroundImage && !cell.frameStyle ? "transparent" : snapshot.collageStyle.backgroundColor
       );
       context.restore();
       return;
@@ -481,6 +494,25 @@ function drawStoryText(
     const height = item.height * documentHeight;
     const padding = item.padding ?? 0;
     context.save();
+    if (item.textBox) {
+      context.font = `${item.fontWeight} ${item.fontSize}px ${item.fontFamily === "serif" ? "Georgia, 'Times New Roman', serif" : "Inter, ui-sans-serif, system-ui, sans-serif"}`;
+      context.letterSpacing = `${item.letterSpacing}px`;
+      const lineHeight = item.fontSize * item.lineHeight;
+      const lines = wrapCarouselText((value) => context.measureText(value).width, item.text, Math.max(1, width - padding * 2));
+      // Carousel text flows naturally just like its DOM text box. The canvas clips its edges.
+      if (item.backgroundColor) {
+        context.fillStyle = item.backgroundColor;
+        context.fillRect(x, y, width, lines.length * lineHeight + padding * 2);
+      }
+      context.fillStyle = item.color;
+      context.textBaseline = "top";
+      context.textAlign = item.textAlign;
+      applyTextShadow(context, item.textShadow);
+      const textX = item.textAlign === "left" ? x + padding : item.textAlign === "right" ? x + width - padding : x + width / 2;
+      lines.forEach((line, index) => context.fillText(line, textX, y + padding + index * lineHeight));
+      context.restore();
+      return;
+    }
     if (item.backgroundColor) {
       context.fillStyle = item.backgroundColor;
       context.fillRect(x, y, width, height);

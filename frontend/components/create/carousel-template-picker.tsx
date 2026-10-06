@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveCreativeLayout } from "./carousel-composition";
+
 import { useMemo, useState } from "react";
 import {
   COLLAGE_LAYOUTS,
@@ -10,6 +12,9 @@ import {
   type CollageStyle,
   type Photo,
 } from "@/types/editor";
+import { useDialogFocus } from "./use-dialog-focus";
+import { getCarouselTheme, themeCarouselSlide } from "./carousel-themes";
+import { getCarouselSlideRole } from "./carousel-workspace";
 import { CarouselSlideArtwork } from "./carousel-slide-artwork";
 import {
   CAROUSEL_STORY_LAYOUTS,
@@ -36,11 +41,12 @@ interface CarouselTemplatePickerProps {
   previewStyle: CollageStyle;
   onClose: () => void;
   onApply: (templateId: string) => void;
+  hasExistingStory: boolean;
 }
 
-export function CarouselTemplatePicker({ open, previewPhotos, previewStyle, onClose, onApply }: CarouselTemplatePickerProps) {
-  const [category, setCategory] = useState<CarouselStoryCategory>("Travel / Journey");
-  const [selectedTemplateId, setSelectedTemplateId] = useState("journey");
+export function CarouselTemplatePicker({ open, previewPhotos, previewStyle, onClose, onApply, hasExistingStory }: CarouselTemplatePickerProps) {
+  const [category, setCategory] = useState<CarouselStoryCategory>("Story / Narrative");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("editorial-story");
   const templates = useMemo(
     () => CAROUSEL_STORY_TEMPLATES.filter((templateItem) =>
       templateItem.category === category || templateItem.relatedCategories?.includes(category)
@@ -49,6 +55,7 @@ export function CarouselTemplatePicker({ open, previewPhotos, previewStyle, onCl
   );
   const selectedTemplate = CAROUSEL_STORY_TEMPLATES.find((item) => item.id === selectedTemplateId);
 
+  const dialogRef = useDialogFocus(open, onClose);
   if (!open) return null;
 
   const applyTemplate = () => {
@@ -64,6 +71,8 @@ export function CarouselTemplatePicker({ open, previewPhotos, previewStyle, onCl
       }}
     >
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="carousel-template-title"
@@ -124,6 +133,7 @@ export function CarouselTemplatePicker({ open, previewPhotos, previewStyle, onCl
           aria-labelledby={categoryTabId(category)}
           className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-7 sm:py-5"
         >
+          {selectedTemplate && <div className="mb-5 border-b border-brand-border pb-4"><h3 className="mb-3 text-sm font-semibold">{selectedTemplate.name} · The complete sequence</h3><TemplatePreview template={selectedTemplate} previewPhotos={previewPhotos} previewStyle={previewStyle} complete /></div>}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((templateItem) => (
               <TemplateCard
@@ -140,7 +150,7 @@ export function CarouselTemplatePicker({ open, previewPhotos, previewStyle, onCl
 
         <footer className="flex shrink-0 flex-col gap-3 border-t border-brand-border bg-brand-surface/80 px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-7">
           <p className="max-w-xl text-[11px] leading-relaxed text-brand-muted sm:text-xs">
-            Your Carousel photos and elements carry forward; your original Collage document stays untouched.
+            {hasExistingStory ? "Applying a template rebuilds the slide sequence and replaces its copy and styling. Photos and elements carry forward. Undo restores your previous story." : "Choose a complete story structure, then edit the copy, photos, and composition of each slide."}
           </p>
           <div className="flex shrink-0 items-center justify-end gap-2">
             <span className="mr-1 hidden text-xs text-brand-muted sm:inline">
@@ -159,7 +169,7 @@ export function CarouselTemplatePicker({ open, previewPhotos, previewStyle, onCl
               onClick={applyTemplate}
               className="h-9 rounded-lg bg-brand-accent px-4 text-xs font-semibold text-white transition-colors hover:bg-brand-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-brand-border"
             >
-              Use template
+              {hasExistingStory ? "Replace story" : "Use template"}
             </button>
           </div>
         </footer>
@@ -209,21 +219,23 @@ function TemplatePreview({
   template,
   previewPhotos,
   previewStyle,
+  complete = false,
 }: {
   template: CarouselStoryTemplateDefinition;
   previewPhotos: Photo[];
   previewStyle: CollageStyle;
+  complete?: boolean;
 }) {
-  const previewSlides = template.slides.slice(0, 3);
+  const previewSlides = complete ? template.slides : template.slides.slice(0, 3);
   let photoOffset = 0;
 
   return (
-    <div aria-hidden="true" className="flex min-h-[112px] items-center justify-center gap-2 overflow-hidden border-b border-brand-border py-2">
+    <div aria-hidden="true" className={`flex min-h-[112px] items-start gap-2 py-2 ${complete ? "overflow-x-auto" : "justify-center overflow-hidden border-b border-brand-border"}`}>
       {previewSlides.map((storySlide, index) => {
         const storyLayout = CAROUSEL_STORY_LAYOUTS.find((candidate) => candidate.id === storySlide.layoutId);
-        const photoLayout = COLLAGE_LAYOUTS.find((candidate) => candidate.id === storyLayout?.photoLayoutId);
+        const photoLayout = resolveCreativeLayout(storyLayout?.photoLayoutId);
         if (!storyLayout || !photoLayout) return null;
-        const slidePhotos = previewPhotos.slice(photoOffset, photoOffset + photoLayout.cells.length);
+        const slidePhotos = previewPhotos.slice(photoOffset, photoOffset + photoLayout.cells.length).map((photo, index) => ({ ...photo, layerOrder: index }));
         photoOffset += slidePhotos.length;
         const previewState: CarouselSlide = {
           id: `template-preview-${template.id}-${index}`,
@@ -244,7 +256,7 @@ function TemplatePreview({
             return [{
               ...constrainCarouselTextPlacement(placement),
               id: `template-preview-${template.id}-${index}-${placementIndex}`,
-              text,
+              text, textBox: true,
             }];
           }),
         };
@@ -252,14 +264,15 @@ function TemplatePreview({
         return (
           <div
             key={storySlide.id}
-            className="relative overflow-hidden border border-brand-border transition-transform duration-200 group-hover:-translate-y-0.5"
+            className="relative shrink-0"
           >
             <CarouselSlideArtwork
-              slide={previewState}
-              maxWidth={60}
-              maxHeight={75}
+              slide={themeCarouselSlide(previewState, getCarouselTheme(template.themeId ?? "redwell")!, true)}
+              maxWidth={complete ? 92 : 60}
+              maxHeight={complete ? 115 : 75}
               className="rounded-none shadow-none"
             />
+            {complete && <span className="mt-1 block text-[10px] text-brand-muted">{index + 1} · {getCarouselSlideRole(storySlide.type)}</span>}
           </div>
         );
       })}

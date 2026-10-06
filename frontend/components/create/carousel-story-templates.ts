@@ -16,7 +16,99 @@ function text(
   return { role, ...placement };
 }
 
+// Shared typography for the new copy-safe compositions. All bounds are normalized.
+function region(role: CarouselStoryTextPlacement["role"], x: number, y: number, width: number, height: number,
+  fontSize: number, overrides: Partial<CarouselStoryTextPlacement> = {}): CarouselStoryTextPlacement {
+  const heading = role === "title" || role === "quote";
+  return text(role, { x, y, width, height, fontSize, fontFamily: heading ? "serif" : "sans",
+    fontWeight: heading ? 500 : role === "eyebrow" ? 600 : 400, color: role === "eyebrow" ? "#a8322b" : "#24211e",
+    textAlign: "left", lineHeight: heading ? 1.12 : 1.4, letterSpacing: role === "eyebrow" ? 1.5 : 0, ...overrides });
+}
+
 export const CAROUSEL_STORY_LAYOUTS = [
+  { id: "margin-cover", name: "Margin cover", category: "Featured", photoLayoutId: "carousel-margin-cover",
+    formatId: travelFormat, backgroundColor: "#f3eee5", themeTone: "paper", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .06, .84, .04, 18), region("title", .08, .14, .84, .18, 64), region("subtitle", .08, .34, .84, .06, 24)] },
+  { id: "feature-column", name: "Feature column", category: "Editorial", photoLayoutId: "carousel-feature-column",
+    formatId: travelFormat, backgroundColor: "#eef0f4", themeTone: "paper", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .08, .36, .06, 16), region("title", .08, .2, .36, .22, 46), region("body", .08, .48, .36, .36, 24), region("metadata", .08, .88, .36, .04, 16)] },
+  { id: "number-note", name: "Number note", category: "Featured", photoLayoutId: "carousel-type",
+    formatId: travelFormat, backgroundColor: "#24211e", themeTone: "ink", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .08, .84, .05, 20, { color: "#fffaf1" }), region("title", .08, .2, .84, .24, 140, { fontFamily: "sans", fontWeight: 700, color: "#fffaf1", lineHeight: 1 }), region("subtitle", .08, .5, .84, .12, 38, { color: "#fffaf1" }), region("body", .08, .68, .84, .18, 28, { color: "#fffaf1" }), region("metadata", .08, .9, .84, .04, 16, { color: "#fffaf1" })] },
+  { id: "checklist", name: "Short list", category: "Minimal", photoLayoutId: "carousel-type",
+    formatId: travelFormat, backgroundColor: "#e8ece4", themeTone: "paper", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .08, .84, .05, 18), region("title", .08, .18, .84, .16, 56), region("body", .08, .4, .84, .42, 32, { lineHeight: 1.6 }), region("metadata", .08, .88, .84, .05, 18)] },
+  { id: "step-note", name: "Step + evidence", category: "Editorial", photoLayoutId: "carousel-step-note",
+    formatId: travelFormat, backgroundColor: "#eef0f4", themeTone: "paper", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .06, .84, .05, 20), region("title", .08, .16, .84, .13, 52), region("body", .08, .32, .84, .12, 26), region("metadata", .08, .87, .84, .06, 18)] },
+  { id: "quiet-quote", name: "Quiet quote", category: "Minimal", photoLayoutId: "carousel-type",
+    formatId: travelFormat, backgroundColor: "#f3eee5", themeTone: "paper", elementZones: [],
+    textPlacements: [region("eyebrow", .12, .12, .76, .05, 18), region("quote", .12, .3, .76, .34, 60), region("body", .12, .74, .76, .12, 24)] },
+  { id: "gallery-caption", name: "Gallery + caption", category: "Photo Dump", photoLayoutId: "carousel-gallery-caption",
+    formatId: travelFormat, backgroundColor: "#e8ece4", themeTone: "paper", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .06, .84, .05, 18), region("title", .08, .14, .84, .1, 48), region("body", .08, .76, .84, .14, 26)] },
+  { id: "wide-screen", name: "Wide screen", category: "Cinematic", photoLayoutId: "carousel-wide-screen",
+    formatId: travelFormat, backgroundColor: "#24211e", themeTone: "ink", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .08, .84, .05, 18, { color: "#fffaf1" }), region("title", .08, .16, .84, .08, 42, { color: "#fffaf1" }), region("body", .08, .78, .84, .12, 26, { color: "#fffaf1" })] },
+  { id: "portrait-label", name: "Portrait label", category: "Editorial", photoLayoutId: "carousel-portrait-label",
+    formatId: travelFormat, backgroundColor: "#f3eee5", themeTone: "paper", elementZones: [],
+    textPlacements: [region("eyebrow", .18, .76, .64, .04, 18), region("title", .18, .82, .64, .07, 40), region("metadata", .18, .91, .64, .03, 16)] },
+  { id: "snapshot-note", name: "Snapshot note", category: "Scrapbook", photoLayoutId: "carousel-snapshot-note",
+    formatId: travelFormat, backgroundColor: "#eadbd3", themeTone: "paper", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .06, .84, .05, 18), region("title", .08, .14, .84, .08, 44), region("body", .12, .78, .76, .14, 24)] },
+  { id: "detail-pair", name: "Detail pair", category: "Travel", photoLayoutId: "carousel-detail-pair",
+    formatId: travelFormat, backgroundColor: "#e8ece4", themeTone: "paper", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .06, .84, .05, 18), region("title", .08, .14, .84, .08, 44), region("body", .08, .78, .84, .13, 26)] },
+  { id: "end-card", name: "Open invitation", category: "Featured", photoLayoutId: "carousel-type",
+    formatId: travelFormat, backgroundColor: "#24211e", themeTone: "ink", elementZones: [],
+    textPlacements: [region("eyebrow", .08, .12, .84, .05, 18, { color: "#fffaf1" }), region("title", .08, .3, .84, .24, 64, { color: "#fffaf1" }), region("body", .08, .62, .84, .13, 26, { color: "#fffaf1" }), region("cta", .08, .82, .7, .08, 24, { color: "#fffaf1", backgroundColor: "#a8322b", padding: 14 })] },
+  {
+    id: "statement", name: "Bold statement", category: "Featured", photoLayoutId: "carousel-type",
+    formatId: travelFormat, backgroundColor: "#24211e", themeTone: "ink", elementZones: [],
+    textPlacements: [
+      text("eyebrow", { x: 0.08, y: 0.1, width: 0.84, height: 0.05, fontSize: 22, fontFamily: "sans", fontWeight: 600, color: "#fffaf1", textAlign: "left", lineHeight: 1.2, letterSpacing: 2 }),
+      text("title", { x: 0.08, y: 0.25, width: 0.84, height: 0.42, fontSize: 96, fontFamily: "serif", fontWeight: 500, color: "#fffaf1", textAlign: "left", lineHeight: 1.04, letterSpacing: -1.5 }),
+      text("body", { x: 0.08, y: 0.74, width: 0.8, height: 0.16, fontSize: 30, fontFamily: "sans", fontWeight: 400, color: "#fffaf1", textAlign: "left", lineHeight: 1.4, letterSpacing: 0 }),
+    ],
+  },
+  {
+    id: "reading", name: "Reading room", category: "Minimal", photoLayoutId: "carousel-type",
+    formatId: travelFormat, backgroundColor: "#f3eee5", themeTone: "paper", elementZones: [],
+    textPlacements: [
+      text("eyebrow", { x: 0.08, y: 0.1, width: 0.84, height: 0.05, fontSize: 22, fontFamily: "sans", fontWeight: 600, color: "#a8322b", textAlign: "left", lineHeight: 1.2, letterSpacing: 2 }),
+      text("title", { x: 0.08, y: 0.22, width: 0.84, height: 0.25, fontSize: 72, fontFamily: "serif", fontWeight: 500, color: "#24211e", textAlign: "left", lineHeight: 1.08, letterSpacing: -1 }),
+      text("quote", { x: 0.08, y: 0.24, width: 0.84, height: 0.4, fontSize: 64, fontFamily: "serif", fontWeight: 500, color: "#24211e", textAlign: "left", lineHeight: 1.16, letterSpacing: -0.5 }),
+      text("body", { x: 0.08, y: 0.56, width: 0.84, height: 0.34, fontSize: 34, fontFamily: "sans", fontWeight: 400, color: "#60574e", textAlign: "left", lineHeight: 1.5, letterSpacing: 0 }),
+    ],
+  },
+  {
+    id: "photo-note", name: "Photo + note", category: "Editorial", photoLayoutId: "carousel-photo-note",
+    formatId: travelFormat, backgroundColor: "#f3eee5", themeTone: "paper", elementZones: [],
+    textPlacements: [
+      text("eyebrow", { x: 0.08, y: 0.06, width: 0.84, height: 0.05, fontSize: 18, fontFamily: "sans", fontWeight: 600, color: "#a8322b", textAlign: "left", lineHeight: 1.2, letterSpacing: 2 }),
+      text("title", { x: 0.08, y: 0.12, width: 0.84, height: 0.12, fontSize: 52, fontFamily: "serif", fontWeight: 500, color: "#24211e", textAlign: "left", lineHeight: 1.05, letterSpacing: -0.5 }),
+      text("body", { x: 0.08, y: 0.79, width: 0.84, height: 0.15, fontSize: 28, fontFamily: "sans", fontWeight: 400, color: "#60574e", textAlign: "left", lineHeight: 1.4, letterSpacing: 0 }),
+    ],
+  },
+  {
+    id: "comparison", name: "Side by side", category: "Editorial", photoLayoutId: "carousel-comparison",
+    formatId: travelFormat, backgroundColor: "#f3eee5", themeTone: "paper", elementZones: [],
+    textPlacements: [
+      text("eyebrow", { x: 0.08, y: 0.06, width: 0.84, height: 0.05, fontSize: 18, fontFamily: "sans", fontWeight: 600, color: "#a8322b", textAlign: "left", lineHeight: 1.2, letterSpacing: 2 }),
+      text("title", { x: 0.08, y: 0.12, width: 0.84, height: 0.14, fontSize: 52, fontFamily: "serif", fontWeight: 500, color: "#24211e", textAlign: "left", lineHeight: 1.08, letterSpacing: -0.5 }),
+      text("body", { x: 0.08, y: 0.75, width: 0.84, height: 0.19, fontSize: 30, fontFamily: "sans", fontWeight: 400, color: "#60574e", textAlign: "left", lineHeight: 1.4, letterSpacing: 0 }),
+    ],
+  },
+  {
+    id: "closing", name: "Final word", category: "Featured", photoLayoutId: "carousel-type",
+    formatId: travelFormat, backgroundColor: "#f3eee5", themeTone: "paper", elementZones: [],
+    textPlacements: [
+      text("eyebrow", { x: 0.1, y: 0.16, width: 0.8, height: 0.06, fontSize: 22, fontFamily: "sans", fontWeight: 600, color: "#a8322b", textAlign: "center", lineHeight: 1.2, letterSpacing: 2 }),
+      text("title", { x: 0.1, y: 0.29, width: 0.8, height: 0.28, fontSize: 76, fontFamily: "serif", fontWeight: 500, color: "#24211e", textAlign: "center", lineHeight: 1.08, letterSpacing: -1 }),
+      text("body", { x: 0.1, y: 0.62, width: 0.8, height: 0.13, fontSize: 28, fontFamily: "sans", fontWeight: 400, color: "#60574e", textAlign: "center", lineHeight: 1.4, letterSpacing: 0 }),
+      text("cta", { x: 0.2, y: 0.81, width: 0.6, height: 0.08, fontSize: 24, fontFamily: "sans", fontWeight: 600, color: "#fffaf1", textAlign: "center", lineHeight: 1.2, letterSpacing: 0, backgroundColor: "#a8322b", padding: 18 }),
+    ],
+  },
   {
     id: "full-bleed",
     name: "Full-bleed",
@@ -331,6 +423,130 @@ function template(
 }
 
 export const CAROUSEL_STORY_TEMPLATES = [
+  { ...template("one-clear-idea", "List / Tips", "One Clear Idea", "Hook → problem → principle → actions → example → takeaway → invitation.", [
+    slide("hook", "cover", "statement", { eyebrow: "A BETTER WAY", title: "Make room for one idea", body: "A small change with a useful result." }),
+    slide("problem", "introduction", "feature-column", { eyebrow: "THE PROBLEM", title: "Too much at once", body: "Show the situation. Explain what makes it difficult." }),
+    slide("principle", "highlight", "number-note", { eyebrow: "THE PRINCIPLE", title: "1", subtitle: "One clear priority", body: "Choose the idea that makes the next decision easier." }),
+    slide("actions", "list", "checklist", { eyebrow: "TRY THIS", title: "Make it practical", body: "01  Name the goal\n02  Remove a distraction\n03  Try one small change", metadata: "THREE ACTIONS" }),
+    slide("example", "detail", "step-note", { eyebrow: "IN PRACTICE", title: "Show one example", body: "Use the frame to show the idea at work.", metadata: "YOUR EXAMPLE / YOUR SOURCE" }),
+    slide("takeaway", "quote", "quiet-quote", { eyebrow: "THE TAKEAWAY", quote: "Clarity starts with a choice.", body: "What will you simplify first?" }),
+    slide("end", "cta", "end-card", { eyebrow: "START SMALL", title: "Try it today.", cta: "Save the steps" }),
+  ], ["Creator"]), themeId: "blueprint", overflowSlide: slide("more", "detail", "step-note", { eyebrow: "ANOTHER EXAMPLE", title: "See it in practice", body: "Add evidence that supports the idea." }) },
+  { ...template("field-weekend", "Travel / Journey", "Field Weekend", "Place → arrival → small discoveries → experience → favorite frame → farewell.", [
+    slide("cover", "cover", "margin-cover", { eyebrow: "A WEEKEND AWAY", title: "Somewhere slower", subtitle: "Add your destination and dates" }),
+    slide("arrival", "introduction", "wide-screen", { eyebrow: "ARRIVAL", title: "The first view", body: "A place begins with a feeling." }),
+    slide("discoveries", "detail", "detail-pair", { eyebrow: "LOOK CLOSER", title: "Around the corner", body: "Pair a scene with the detail that made you stop." }),
+    slide("experience", "experience", "snapshot-note", { eyebrow: "FROM THE DAY", title: "No fixed plans", body: "Keep a note of what you did, and what surprised you." }),
+    slide("favorite", "highlight", "portrait-label", { eyebrow: "THE FRAME TO KEEP", title: "A quiet moment", metadata: "PLACE / TIME" }),
+    slide("end", "ending", "closing", { eyebrow: "UNTIL NEXT TIME", title: "Leave room to return.", cta: "Keep this place" }),
+  ], ["Photography"]), themeId: "sage", overflowSlide: slide("more", "detail", "detail-pair", { eyebrow: "ONE MORE STOP", title: "Worth a detour", body: "Add a place and the detail worth finding." }) },
+  { ...template("working-notes", "Creator", "Working Notes", "Brief → hero work → details → alternate → decisions → invitation. A compact portfolio case study.", [
+    slide("cover", "cover", "margin-cover", { eyebrow: "SELECTED PROJECT", title: "Work with a purpose", subtitle: "Your name / practice / year" }),
+    slide("hero", "highlight", "wide-screen", { eyebrow: "THE WORK", title: "The finished piece", body: "Project name and medium." }),
+    slide("detail", "detail", "detail-pair", { eyebrow: "CRAFT / DETAIL", title: "Look closer", body: "Show the full piece beside an important detail." }),
+    slide("alternate", "gallery", "gallery-caption", { eyebrow: "OTHER VIEWS", title: "A different angle", body: "Alternate work, applications, or studies." }),
+    slide("decisions", "introduction", "feature-column", { eyebrow: "THE DECISIONS", title: "Why it works", body: "Name the brief, one constraint, and the choice that resolved it.", metadata: "ROLE / COLLABORATORS" }),
+    slide("end", "cta", "end-card", { eyebrow: "OPEN FOR COLLABORATION", title: "Let’s make something.", body: "Add your contact or portfolio address.", cta: "Explore the work" }),
+  ], ["Photography"]), themeId: "contrast", overflowSlide: slide("more", "gallery", "gallery-caption", { eyebrow: "PROJECT STUDIES", title: "Another view", body: "Add work that reveals another part of the process." }) },
+  { ...template("collected-days", "Photography", "Collected Days", "Cover → hero → photo cluster → snapshots → reflection → last frame. A photo dump with a quiet ending.", [
+    slide("cover", "cover", "margin-cover", { eyebrow: "RECENTLY", title: "Days worth keeping", subtitle: "A few moments from ordinary life" }),
+    slide("hero", "highlight", "wide-screen", { eyebrow: "FIRST FRAME", title: "The light that day" }),
+    slide("cluster", "gallery", "gallery-caption", { eyebrow: "IN BETWEEN", title: "Three small things", body: "They made the day feel like itself." }),
+    slide("snapshots", "detail", "snapshot-note", { eyebrow: "CAMERA ROLL NOTES", title: "Almost forgotten", body: "The frames that bring it all back." }),
+    slide("thought", "quote", "quiet-quote", { eyebrow: "A NOTE TO SELF", quote: "Keep the ordinary days.", body: "They hold more than you think." }),
+    slide("last", "ending", "portrait-label", { eyebrow: "LAST FRAME", title: "Until the next one", metadata: "YOUR DATE / PLACE" }),
+  ], ["Story / Narrative"]), themeId: "clay", overflowSlide: slide("more", "gallery", "snapshot-note", { eyebrow: "ANOTHER MEMORY", title: "One more day", body: "A small note from the camera roll." }) },
+  { ...template("small-shift", "Story / Narrative", "Small Shift", "Hook → context → tension → turning point → reflection → ending. A personal story with room to pause.", [
+    slide("hook", "cover", "statement", { eyebrow: "A PERSONAL STORY", title: "Something shifted", body: "Start with the moment that changed your perspective." }),
+    slide("context", "introduction", "feature-column", { eyebrow: "BEFORE THAT", title: "Where I was", body: "Give the reader a place, a time, and a little context." }),
+    slide("tension", "journey", "quiet-quote", { eyebrow: "THE QUESTION", quote: "What if I tried another way?", body: "Name the uncertainty you were carrying." }),
+    slide("turn", "experience", "step-note", { eyebrow: "THE TURNING POINT", title: "One small decision", body: "Show what happened, rather than only explaining it." }),
+    slide("reflection", "highlight", "checklist", { eyebrow: "LOOKING BACK", title: "What stayed with me", body: "01  A thing I noticed\n02  A thing I changed\n03  A thing I kept" }),
+    slide("end", "ending", "closing", { eyebrow: "STILL UNFOLDING", title: "The next page is open.", body: "Leave a thought for someone at the same starting point." }),
+  ], ["Minimal"]), themeId: "clay", overflowSlide: slide("more", "experience", "photo-note", { eyebrow: "ALONG THE WAY", title: "Another moment", body: "Add a scene that moves the story forward." }) },
+  { ...template("change-study", "Creator", "Change Study", "Promise → before → intervention → after → comparison → conclusion. Show the change and how it happened.", [
+    slide("hook", "cover", "margin-cover", { eyebrow: "A CHANGE STUDY", title: "A different outcome", subtitle: "What changed, and why" }),
+    slide("before", "before-after", "portrait-label", { eyebrow: "BEFORE", title: "The starting point", metadata: "ORIGINAL / DATE" }),
+    slide("intervention", "tip", "step-note", { eyebrow: "THE INTERVENTION", title: "One useful change", body: "Explain the decision and show the step." }),
+    slide("after", "highlight", "portrait-label", { eyebrow: "AFTER", title: "The result", metadata: "REVISED / DATE" }),
+    slide("comparison", "before-after", "comparison", { eyebrow: "BEFORE / AFTER", title: "See the difference", body: "Left: original. Right: revised. Name the change that matters." }),
+    slide("end", "cta", "end-card", { eyebrow: "THE CONCLUSION", title: "Keep what works.", body: "Share the lesson, including any limits.", cta: "Save the study" }),
+  ], ["Story / Narrative"]), themeId: "blueprint", overflowSlide: slide("more", "detail", "step-note", { eyebrow: "ANOTHER DECISION", title: "How it changed", body: "Show another useful step in the intervention." }) },
+  { ...template("three-good-practices", "List / Tips", "Three Good Practices", "Promise → three illustrated practices → checklist → next step. Clear advice without a wall of text.", [
+    slide("cover", "cover", "statement", { eyebrow: "A SHORT GUIDE", title: "Three good practices", body: "A few things worth trying." }),
+    slide("one", "tip", "step-note", { eyebrow: "01 / NOTICE", title: "Look before you act", body: "Name a useful observation and show an example." }),
+    slide("two", "tip", "feature-column", { eyebrow: "02 / CHOOSE", title: "Make one decision", body: "Explain the choice. Use the photograph to make it concrete." }),
+    slide("three", "tip", "detail-pair", { eyebrow: "03 / REPEAT", title: "Keep what helps", body: "Pair a result with the detail that made it repeatable." }),
+    slide("summary", "list", "checklist", { eyebrow: "YOUR CHECKLIST", title: "Take these with you", body: "01  Notice the situation\n02  Choose one change\n03  Repeat what works" }),
+    slide("end", "cta", "end-card", { eyebrow: "YOUR NEXT STEP", title: "Pick one to try.", cta: "Keep the checklist" }),
+  ], ["Creator"]), themeId: "sage", overflowSlide: slide("more", "tip", "step-note", { eyebrow: "ANOTHER PRACTICE", title: "Try this too", body: "Add one action with an illustrated example." }) },
+  { ...template("portrait-essay", "Photography", "Portrait Essay", "Headline → subject → environment → detail → voice → closing. An editorial story about a person and their world.", [
+    slide("headline", "cover", "margin-cover", { eyebrow: "IN CONVERSATION", title: "A world of their own", subtitle: "Subject / photographer / date" }),
+    slide("subject", "introduction", "portrait-label", { eyebrow: "THE PERSON", title: "Meet the subject", metadata: "NAME / PRACTICE" }),
+    slide("environment", "experience", "feature-column", { eyebrow: "IN THEIR WORLD", title: "A sense of place", body: "Describe the setting and what it reveals about the person." }),
+    slide("details", "detail", "gallery-caption", { eyebrow: "THE SMALL THINGS", title: "Signs of a life", body: "Hands, objects, and spaces that tell the story." }),
+    slide("voice", "quote", "quiet-quote", { eyebrow: "IN THEIR WORDS", quote: "Add a thought in their voice.", body: "Name / context / attribution" }),
+    slide("end", "ending", "closing", { eyebrow: "END OF ESSAY", title: "Keep looking closely.", body: "Add a final observation and photo credits." }),
+  ], ["Story / Narrative", "Creator"]), themeId: "redwell", overflowSlide: slide("more", "detail", "detail-pair", { eyebrow: "FROM THEIR WORLD", title: "Another detail", body: "Add a frame that deepens the portrait." }) },
+  {
+    id: "editorial-story", category: "Story / Narrative", name: "Editorial Story", themeId: "redwell",
+    description: "Hook → context → evidence → reflection → final word. A focused story in five slides.",
+    slides: [
+      slide("hook", "cover", "statement", { eyebrow: "THE STORY", title: "Start with a point of view", body: "Tell readers why this story matters." }),
+      slide("context", "introduction", "reading", { eyebrow: "THE CONTEXT", title: "Set the scene", body: "What brought you here? Give the reader just enough context to follow along." }),
+      slide("evidence", "gallery", "photo-note", { eyebrow: "A CLOSER LOOK", title: "Show the moment", body: "Use a photograph and a specific detail to bring the story to life." }),
+      slide("reflection", "quote", "reading", { eyebrow: "THE TAKEAWAY", quote: "What changed the way you see it?", body: "Share the thought you want to leave behind." }),
+      slide("end", "cta", "closing", { eyebrow: "KEEP THE CONVERSATION GOING", title: "What is your point of view?", cta: "Share your thought" }),
+    ], overflowSlide: slide("more", "detail", "photo-note", { eyebrow: "ANOTHER DETAIL", title: "Build on the story", body: "Add a moment that earns its place in the sequence." }),
+  },
+  {
+    id: "practical-guide", category: "List / Tips", relatedCategories: ["Creator", "Minimal"], name: "Practical Guide", themeId: "blueprint",
+    description: "A promise, three useful ideas, and a next step. Designed for clear explanations.",
+    slides: [
+      slide("hook", "cover", "statement", { eyebrow: "A PRACTICAL GUIDE", title: "Three ideas you can use", body: "Name the problem your guide helps solve." }),
+      ...["Start small", "Make it repeatable", "Notice what works"].map((title, index) => slide(`idea-${index}`, "tip", "reading", { eyebrow: `IDEA ${index + 1}`, title, body: "Explain the idea. Give a concrete example, then suggest one small action." })),
+      slide("end", "cta", "closing", { eyebrow: "PUT IT INTO PRACTICE", title: "Choose one. Try it today.", cta: "Save this guide" }),
+    ], overflowSlide: slide("more", "tip", "reading", { eyebrow: "ONE MORE IDEA", title: "Keep it useful", body: "Add another actionable idea and a clear example." }),
+  },
+  {
+    id: "photo-journal", category: "Photography", relatedCategories: ["Travel / Journey"], name: "Photo Journal", themeId: "field",
+    description: "An opening frame, three moments, and a closing note. Photographs with room for context.",
+    slides: [
+      slide("cover", "cover", "photo-note", { eyebrow: "COLLECTED MOMENTS", title: "Notes from a good day", body: "Add a place, a date, or the feeling you want to remember." }),
+      ...["Where it began", "The little details", "A moment that stayed"].map((title, index) => slide(`frame-${index}`, "gallery", "photo-note", { eyebrow: "FROM THE JOURNAL", title, body: "Write a short note about this frame." })),
+      slide("end", "ending", "closing", { eyebrow: "UNTIL NEXT TIME", title: "Keep looking closely.", cta: "Save the journal" }),
+    ], overflowSlide: slide("more", "gallery", "photo-note", { eyebrow: "ANOTHER FRAME", title: "One more moment", body: "Add a note from the day." }),
+  },
+  {
+    id: "process", category: "Creator", relatedCategories: ["List / Tips"], name: "Show the Process", themeId: "contrast",
+    description: "Starting point → decisions → result → takeaway. A clear before-and-after story.",
+    slides: [
+      slide("cover", "cover", "statement", { eyebrow: "BEHIND THE WORK", title: "How it came together", body: "Introduce the project and what you wanted to change." }),
+      slide("before", "before-after", "comparison", { eyebrow: "START / FINISH", title: "See the difference", body: "Use the left frame for the starting point and the right for the result." }),
+      slide("decisions", "tip", "reading", { eyebrow: "THE DECISIONS", title: "What made the difference", body: "Describe the choices that had the biggest effect. Keep the explanation specific." }),
+      slide("result", "highlight", "photo-note", { eyebrow: "THE RESULT", title: "A closer look", body: "Point out the detail you are most proud of." }),
+      slide("end", "cta", "closing", { eyebrow: "THE TAKEAWAY", title: "Show your process.", cta: "Keep this reference" }),
+    ], overflowSlide: slide("more", "detail", "photo-note", { eyebrow: "IN PROGRESS", title: "One more decision", body: "Show a useful step along the way." }),
+  },
+  {
+    id: "showcase", category: "Creator", relatedCategories: ["Photography"], name: "Selected Work", themeId: "redwell",
+    description: "An introduction, selected work, and an invitation. For portfolios and product stories.",
+    slides: [
+      slide("cover", "cover", "statement", { eyebrow: "SELECTED WORK", title: "Made with intention", body: "Your name, practice, or collection." }),
+      ...["The brief", "The approach", "The finished work"].map((title, index) => slide(`work-${index}`, "gallery", "photo-note", { eyebrow: "PROJECT NOTES", title, body: "Add the project name and one detail that makes it distinctive." })),
+      slide("end", "cta", "closing", { eyebrow: "LET’S MAKE SOMETHING", title: "See more of the work.", cta: "Add your website" }),
+    ], overflowSlide: slide("more", "gallery", "photo-note", { eyebrow: "SELECTED WORK", title: "Another project", body: "Add a title and a short project note." }),
+  },
+  {
+    id: "announcement", category: "Minimal", relatedCategories: ["Creator"], name: "Something New", themeId: "contrast",
+    description: "The news, why it matters, the details, and a next step. A concise announcement.",
+    slides: [
+      slide("cover", "cover", "statement", { eyebrow: "SOMETHING NEW", title: "It starts here.", body: "Name what you are announcing." }),
+      slide("why", "introduction", "reading", { eyebrow: "WHY IT MATTERS", title: "A little more possibility", body: "Explain who this is for and what it makes possible." }),
+      slide("details", "detail", "reading", { eyebrow: "THE DETAILS", title: "What you need to know", body: "Add the date, location, availability, or key details." }),
+      slide("end", "cta", "closing", { eyebrow: "BE PART OF IT", title: "Your next step.", cta: "Add your call to action" }),
+    ], overflowSlide: slide("more", "detail", "reading", { eyebrow: "GOOD TO KNOW", title: "One more detail", body: "Add useful information for your audience." }),
+  },
   template("journey", "Travel / Journey", "Journey", "A considered route from first glimpse to final memory.", [
     slide("cover", "cover", "full-bleed", { eyebrow: "FIELD NOTES · 01", title: "A journey worth taking", body: "A story told one moment at a time." }),
     slide("introduction", "introduction", "magazine-cover", { eyebrow: "THE BEGINNING", title: "Out of office", body: "A little room to wander, and nowhere urgent to be." }),

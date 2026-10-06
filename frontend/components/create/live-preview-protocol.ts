@@ -57,6 +57,7 @@ function isLivePreviewState(value: unknown): value is LivePreviewState {
     !(value.composition.storyText === undefined || Array.isArray(value.composition.storyText)) ||
     !isRecord(value.composition.slotAssignments) ||
     !isRecord(value.composition.collageStyle) ||
+    !isBackgroundStyle(value.composition.collageStyle) ||
     !Array.isArray(value.slides) ||
     !(value.activeSlideId === null || typeof value.activeSlideId === "string")
   ) {
@@ -65,6 +66,19 @@ function isLivePreviewState(value: unknown): value is LivePreviewState {
   return value.slides.every(
     (slide) => isRecord(slide) && typeof slide.id === "string" && isNumber(slide.order)
   );
+}
+
+function isBackgroundStyle(style: Record<string, unknown>) {
+  if (style.backgroundType !== undefined && style.backgroundType !== "color" && style.backgroundType !== "image") return false;
+  const image = style.backgroundImage;
+  if (image === undefined || image === null) return true;
+  if (!isRecord(image) || typeof image.src !== "string" || typeof image.name !== "string" ||
+    (image.fit !== "cover" && image.fit !== "contain")) return false;
+  return isNumber(image.width) && image.width > 0 && isNumber(image.height) && image.height > 0 &&
+    isNumber(image.positionX) && image.positionX >= 0 && image.positionX <= 1 &&
+    isNumber(image.positionY) && image.positionY >= 0 && image.positionY <= 1 &&
+    isNumber(image.zoom) && image.zoom >= 1 && image.zoom <= 3 &&
+    isNumber(image.opacity) && image.opacity >= 0 && image.opacity <= 1;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

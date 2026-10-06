@@ -13,6 +13,7 @@ import {
   resolvePhotoFilters,
 } from "./photo-filters";
 import { getArtworkLayerStack } from "./artwork-composition";
+import { CanvasBackground, getActiveBackgroundImage } from "./canvas-background";
 
 export const MAX_CANVAS_WIDTH = 1600;
 
@@ -266,6 +267,9 @@ export function FabricCanvasComponent({
           className="relative mx-auto max-w-full overflow-hidden shadow-lg"
           style={canvasStyle}
         >
+          <CanvasBackground style={collageStyle}
+            width={format.width - (collageStyle.borderEnabled ? collageStyle.borderWidth * 2 : 0)}
+            height={format.height - (collageStyle.borderEnabled ? collageStyle.borderWidth * 2 : 0)} />
           {layout.cells
             .map((cell, index) => ({ cell, index }))
             .sort((first, second) =>
@@ -282,7 +286,7 @@ export function FabricCanvasComponent({
               width: `calc(${cell.width * 100}% - ${cellSpacing}px)`,
               height: `calc(${cell.height * 100}% - ${cellSpacing}px)`,
               borderRadius: cell.frameStyle ? 2 * canvasScale : cell.isBackground ? 0 : collageStyle.cornerRadius * canvasScale,
-              backgroundColor: cell.frameStyle ? cell.frameColor ?? "#fff" : collageStyle.backgroundColor,
+              backgroundColor: cell.frameStyle ? cell.frameColor ?? "#fff" : getActiveBackgroundImage(collageStyle) ? "transparent" : collageStyle.backgroundColor,
               boxShadow: cell.frameStyle
                 ? `0 ${5 * canvasScale}px ${14 * canvasScale}px rgba(20, 18, 16, 0.24)`
                 : undefined,
@@ -783,7 +787,7 @@ export function FabricCanvasComponent({
               style={{
                 left: `${item.x * 100}%`,
                 top: `${item.y * 100}%`,
-                width: "max-content",
+                width: item.textBox ? `${item.width * 100}%` : "max-content",
                 maxWidth: `${item.width * 100}%`,
                 zIndex: layerOrderByKey.get(`storyText:${item.id}`) ?? 0,
                 color: item.color,
@@ -839,7 +843,7 @@ export function FabricCanvasComponent({
               style={{ ...selectedStoryTextBounds, boxSizing: "border-box" }}
             />
           )}
-          {!readOnly && photos.length === 0 && (
+          {!readOnly && photos.length === 0 && storyText.length === 0 && elements.length === 0 && layout.cells.length > 0 && (
             <div className="pointer-events-none absolute inset-x-0 top-1/2 z-[1002] flex -translate-y-1/2 flex-col items-center px-4 text-center">
               <p className="text-sm font-semibold text-gray-800">Add your first photo</p>
               <p className="mt-1 text-xs text-gray-500">

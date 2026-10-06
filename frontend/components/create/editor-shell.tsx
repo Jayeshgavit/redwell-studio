@@ -1,9 +1,13 @@
 "use client";
 
+import { resolveCreativeLayout } from "./carousel-composition";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { IconPalette, IconChevronDown, IconLayoutCollage } from "@tabler/icons-react";
 import { TopBar } from "./top-bar";
 import { Toolbar } from "./toolbar";
 import { PhotoToolbar, type PhotoToolbarHandle } from "./photo-toolbar";
+import { CollagePhotoLibrary } from "./collage-photo-library";
 import { FabricCanvasComponent } from "./fabric-canvas";
 import { LayoutPicker } from "./layout-picker";
 import { ImageAdjustmentToolbar } from "./image-adjustment-toolbar";
@@ -14,7 +18,10 @@ import { ArtworkLayersPanel } from "./artwork-layers-panel";
 import { ResizableDock, type DockPanelContent } from "./resizable-dock";
 import { ExportDialog } from "./export-dialog";
 import { ClearProjectDialog } from "./clear-project-dialog";
-import { CarouselNavigation, CarouselTimeline } from "./carousel-workspace";
+import { CarouselTimeline } from "./carousel-workspace";
+import { CarouselAddSlideDialog } from "./carousel-add-slide-dialog";
+import { CarouselDesignPanel } from "./carousel-design-panel";
+import { getCarouselTheme } from "./carousel-themes";
 import { CarouselTemplatePicker } from "./carousel-template-picker";
 import { CarouselPreviewDialog } from "./carousel-preview-dialog";
 import { CarouselStoryCopy } from "./carousel-story-copy";
@@ -22,7 +29,7 @@ import { CAROUSEL_STORY_LAYOUTS } from "./carousel-story-templates";
 import { PhotoProvider, usePhotos, type HistoryBehavior } from "./photo-context";
 import { CANVAS_FORMATS, COLLAGE_LAYOUTS, EDITOR_TOOLS, type DocumentMode, type EditorTool } from "@/types/editor";
 import type { CanvasElement, CarouselStoryTextItem } from "@/types/editor";
-import { getArtworkLayerStack, type ArtworkLayerEntry } from "./artwork-composition";
+import { getArtworkImageSources, getArtworkLayerStack, type ArtworkLayerEntry } from "./artwork-composition";
 import { getCatalogElement } from "./elements/catalog";
 import type { ArtworkLayerItem } from "./artwork-layers-panel";
 import { useViewport } from "./use-viewport";
@@ -36,15 +43,25 @@ import {
 } from "./live-preview-protocol";
 
 const WORKSPACE_STORAGE_KEY = "redwell-studio:workspace:v1";
+const COLLAGE_PANEL_HELP: Record<EditorTool, string> = {
+  photos: "Upload, select, and adjust your images.",
+  layouts: "Find a composition that gives each photo room.",
+  elements: "Add a finishing touch. Select an element to transform it.",
+  layers: "Control what sits in front, stays visible, or remains locked.",
+  design: "Give your collage a headline, caption, or small detail.",
+  style: "Set the space, edges, and background around your photos.",
+};
 
 function EditorContent() {
   const [activeTool, setActiveTool] = useState<EditorTool>("photos");
   const [openPanelIds, setOpenPanelIds] = useState<EditorTool[]>(["photos"]);
-  const [dockWidth, setDockWidth] = useState(352);
+  const [dockWidth, setDockWidth] = useState(304);
+  const [carouselDockWidth, setCarouselDockWidth] = useState<number | null>(null);
   const [workspaceRestored, setWorkspaceRestored] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isClearProjectOpen, setIsClearProjectOpen] = useState(false);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
+  const [isAddSlideOpen, setIsAddSlideOpen] = useState(false);
   const [isCarouselPreviewOpen, setIsCarouselPreviewOpen] = useState(false);
   const [previewChannelId, setPreviewChannelId] = useState<string | null>(null);
   const [previewNotice, setPreviewNotice] = useState<string | null>(null);
@@ -82,6 +99,8 @@ function EditorContent() {
     deleteCarouselSlide,
     reorderCarouselSlide,
     applyCarouselTemplate,
+    applyCarouselTheme,
+    distributeCarouselPhotos,
     applyCarouselStoryLayout,
     setDocumentMode,
     elements,
@@ -130,6 +149,9 @@ function EditorContent() {
           if (typeof value.dockWidth === "number" && Number.isFinite(value.dockWidth)) {
             setDockWidth(Math.max(260, Math.min(520, value.dockWidth)));
           }
+          if (typeof value.carouselDockWidth === "number" && Number.isFinite(value.carouselDockWidth)) {
+            setCarouselDockWidth(Math.max(320, Math.min(520, value.carouselDockWidth)));
+          }
         }
       }
     } catch {
@@ -144,12 +166,12 @@ function EditorContent() {
     try {
       window.localStorage.setItem(
         WORKSPACE_STORAGE_KEY,
-        JSON.stringify({ activeTool, openPanelIds, dockWidth })
+        JSON.stringify({ activeTool, openPanelIds, dockWidth, carouselDockWidth })
       );
     } catch {
       // The editor remains usable when browser storage is unavailable.
     }
-  }, [activeTool, dockWidth, openPanelIds, workspaceRestored]);
+  }, [activeTool, dockWidth, carouselDockWidth, openPanelIds, workspaceRestored]);
 
   useEffect(() => {
     if (!selectedLayer) return;
@@ -185,9 +207,13 @@ function EditorContent() {
     COLLAGE_LAYOUTS.find((layout) => layout.photoCount === layoutPhotoCount) ??
     COLLAGE_LAYOUTS[0];
   const currentLayout =
-    COLLAGE_LAYOUTS.find((layout) => layout.id === selectedLayoutId) ?? defaultLayout;
+    resolveCreativeLayout(selectedLayoutId) ?? defaultLayout;
   const currentFormat =
     CANVAS_FORMATS.find((format) => format.id === canvasFormatId) ?? CANVAS_FORMATS[0];
+  const isCollage = documentMode === "collage";
+  const assignedPhotoCount = currentLayout.cells.filter((_, index) => photos.some((photo) => photo.id === slotAssignments[index])).length;
+  const emptySlotCount = currentLayout.cells.length - assignedPhotoCount;
+  const isEmptyCollage = isCollage && photos.length === 0 && elements.length === 0 && storyText.length === 0;
   const artworkLayers = useMemo(
     () => getArtworkLayerStack({ layout: currentLayout, photos, slotAssignments, elements, storyText }),
     [currentLayout, elements, photos, slotAssignments, storyText]
@@ -205,7 +231,7 @@ function EditorContent() {
           ...layer,
           typeLabel: "IMAGE",
           label: slot === undefined ? "Photo" : `Photo ${Number(slot) + 1}`,
-          detail: "",
+          detail: isCollage ? "Select in Photos to crop or replace" : "",
           visible: photo?.visible !== false,
           locked: photo?.locked === true,
         };
@@ -216,7 +242,7 @@ function EditorContent() {
           ...layer,
           typeLabel: "TEXT",
           label: item ? layerTextName(item.role) : "Text",
-          detail: "",
+          detail: isCollage ? item?.text ?? "" : "",
           visible: item?.visible !== false,
           locked: item?.locked === true,
         };
@@ -231,7 +257,7 @@ function EditorContent() {
         locked: element?.locked === true,
       };
       }),
-    [artworkLayers, elements, photos, slotAssignments, storyText]
+    [artworkLayers, elements, isCollage, photos, slotAssignments, storyText]
   );
   const livePreviewState = useMemo<LivePreviewState>(
     () => ({
@@ -272,7 +298,7 @@ function EditorContent() {
     const generation = ++previewSendGenerationRef.current;
     try {
       const pendingAssets = await Promise.all(
-        [...new Set(state.composition.photos.map((photo) => photo.src))]
+        getArtworkImageSources(state.composition)
           .filter((source) => forcePhotoAssets || !publishedPreviewSourcesRef.current.has(source))
           .filter((source) => source.startsWith("blob:"))
           .map(async (source) => {
@@ -293,9 +319,9 @@ function EditorContent() {
         } satisfies LivePreviewMessage);
         publishedPreviewSourcesRef.current.add(source);
       });
-      state.composition.photos.forEach((photo) => {
-        if (!photo.src.startsWith("blob:")) {
-          publishedPreviewSourcesRef.current.add(photo.src);
+      getArtworkImageSources(state.composition).forEach((source) => {
+        if (!source.startsWith("blob:")) {
+          publishedPreviewSourcesRef.current.add(source);
         }
       });
       channel.postMessage({ type: "state", state } satisfies LivePreviewMessage);
@@ -312,7 +338,7 @@ function EditorContent() {
   sendLivePreviewStateRef.current = sendLivePreviewState;
 
   useEffect(() => {
-    const activeSources = new Set(livePreviewState.composition.photos.map((photo) => photo.src));
+    const activeSources = new Set(getArtworkImageSources(livePreviewState.composition));
     publishedPreviewSourcesRef.current.forEach((source) => {
       if (!activeSources.has(source)) publishedPreviewSourcesRef.current.delete(source);
     });
@@ -358,11 +384,7 @@ function EditorContent() {
     }, 80);
     return () => window.clearTimeout(timeout);
   }, [livePreviewState, previewChannelId]);
-  const availableLayouts = documentMode === "collage"
-    ? COLLAGE_LAYOUTS
-    : COLLAGE_LAYOUTS.filter(
-        (layout) => layout.photoCount === layoutPhotoCount || layout.id === selectedLayoutId
-      );
+  const availableLayouts = COLLAGE_LAYOUTS;
   const templatePreviewPhotos = carousel
     ? [...new Map(carousel.slides.flatMap((slide) => slide.photos).map((photo) => [photo.id, photo])).values()]
     : [];
@@ -441,9 +463,11 @@ function EditorContent() {
     selectCarouselSlide(slideId);
   };
 
-  const handleAddCarouselSlide = () => {
+  const handleAddCarouselSlide = (presetId?: string) => {
     setSelectedLayer(null);
-    addCarouselSlide();
+    addCarouselSlide(presetId);
+    setIsAddSlideOpen(false);
+    handleOpenPanel(presetId === "photo" || presetId === "comparison" ? "photos" : "design");
   };
 
   const handleDuplicateCarouselSlide = () => {
@@ -500,7 +524,7 @@ function EditorContent() {
     applyCarouselTemplate(templateId);
     setSelectedLayer(null);
     setIsTemplatePickerOpen(false);
-    handleOpenPanel("elements");
+    handleOpenPanel("design");
   };
 
   const handleDuplicateElement = (element: CanvasElement) => {
@@ -526,15 +550,24 @@ function EditorContent() {
               onClick={() => photoToolbarRef.current?.openPicker()}
               className="flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-redwell-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-redwell-700 active:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500 focus-visible:ring-offset-2"
             >
-              <span aria-hidden="true">📷</span>
+              <span aria-hidden="true">{"+"}</span>
               <span className="whitespace-nowrap">Add Photos</span>
             </button>
-            <p className="text-xs leading-relaxed text-brand-muted">
+            {!isCollage && <p className="text-xs leading-relaxed text-brand-muted">
               {photos.length > 0
                 ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"} on this ${documentMode === "carousel" ? "slide" : "collage"}. Empty slots stay in place when you add or remove photos.`
                 : `Add photos to start your ${documentMode === "carousel" ? "slide" : "collage"}. Photos stay in their assigned slots.`}
-            </p>
+            </p>}
           </div>
+          {<CollagePhotoLibrary
+            photos={photos}
+            slotAssignments={slotAssignments}
+            slotCount={currentLayout.cells.length}
+            selectedPhotoId={selectedPhotoId}
+            onSelect={handlePhotoSelect}
+            onBrowseLayouts={() => handleOpenPanel("layouts")}
+          />}
+          {!isCollage && photos.some((photo) => !Object.values(slotAssignments).includes(photo.id)) && <button type="button" onClick={() => { distributeCarouselPhotos(); setSelectedLayer(null); }} className="min-h-10 w-full rounded border border-brand-border px-3 py-2 text-xs font-semibold text-brand-ink hover:bg-brand-neutral focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent">Turn unplaced photos into slides</button>}
           {selectedPhoto && (
             selectedPhoto.locked ? (
               <p className="border-l-2 border-brand-accent pl-3 py-2 text-xs leading-relaxed text-brand-muted">
@@ -543,10 +576,10 @@ function EditorContent() {
             ) : (
               <ImageAdjustmentToolbar
                 photo={selectedPhoto}
-                onReplacePhoto={documentMode === "carousel" && selectedPhoto
+                onReplacePhoto={selectedPhoto
                   ? () => photoToolbarRef.current?.openPickerForPhoto(selectedPhoto.id)
                   : undefined}
-                onRemovePhoto={documentMode === "carousel" && selectedPhoto
+                onRemovePhoto={selectedPhoto
                   ? () => {
                       removePhoto(selectedPhoto.id);
                       setSelectedLayer((current) =>
@@ -568,6 +601,7 @@ function EditorContent() {
       content: (
         <LayoutPicker
           embedded
+          previewFormat={currentFormat}
           availableLayouts={availableLayouts}
           carouselStoryLayouts={CAROUSEL_STORY_LAYOUTS}
           previewPhotos={photos}
@@ -586,23 +620,6 @@ function EditorContent() {
       id: "elements",
       content: (
         <div className="space-y-4">
-          {documentMode === "carousel" && storyLayoutId && !selectedElement && (
-            <CarouselStoryCopy
-              items={storyText}
-              selectedItemId={selectedStoryText?.id ?? null}
-              canAdd={storyText.length < 8}
-              onSelect={handleStoryTextSelect}
-              onBrowseElements={() => {
-                setSelectedLayer((current) => current?.kind === "storyText" ? null : current);
-                handleOpenPanel("elements");
-              }}
-              onUpdate={updateStoryText}
-              onAdd={() => addStoryText()}
-              onRemove={handleDeleteStoryText}
-              onBeginTransaction={beginHistoryTransaction}
-              onFinishTransaction={finishHistoryTransaction}
-            />
-          )}
           <div>
             {selectedElement && !selectedStoryText && !selectedElement.locked && (
               <ElementToolbar
@@ -623,6 +640,7 @@ function EditorContent() {
           </div>
           {!selectedStoryText && (
             <ElementsPanel
+              isCollage={isCollage}
               format={currentFormat}
               selectedAssetId={selectedElement?.assetId ?? null}
               onAdd={(element) => {
@@ -638,23 +656,18 @@ function EditorContent() {
       id: "design",
       content: (
         <div className="space-y-4">
-          <div className="rounded-md border border-brand-border bg-brand-paper p-3">
-            <h2 className="text-xs font-semibold text-brand-ink">Editorial text</h2>
-            <p className="mt-1 text-[11px] leading-relaxed text-brand-muted">
-              Add a headline, subtitle, caption, date or location, small label, or badge. Drag text on the canvas to place it.
-            </p>
-          </div>
           <CarouselStoryCopy
+            isCollage={isCollage}
             items={storyText}
             selectedItemId={selectedStoryText?.id ?? null}
-            canAdd={storyText.length < 8}
+            canAdd={storyText.length < (isCollage ? 8 : 32)}
             onSelect={handleStoryTextSelect}
             onBrowseElements={() => {
               setSelectedLayer((current) => current?.kind === "storyText" ? null : current);
               handleOpenPanel("elements");
             }}
             onUpdate={updateStoryText}
-            onAdd={() => addStoryText()}
+            onAdd={(role) => { const id = addStoryText(role); if (!isCollage) handleStoryTextSelect(id); }}
             onRemove={handleDeleteStoryText}
             onBeginTransaction={beginHistoryTransaction}
             onFinishTransaction={finishHistoryTransaction}
@@ -665,6 +678,12 @@ function EditorContent() {
     {
       id: "layers",
       content: (
+        <div className="space-y-4">
+        {isCollage && selectedLayer && <button type="button" onClick={() => {
+          if (selectedLayer.kind === "photo") handlePhotoSelect(selectedLayer.id);
+          else if (selectedLayer.kind === "element") handleElementSelect(selectedLayer.id);
+          else handleStoryTextSelect(selectedLayer.id);
+        }} className="w-full rounded-md border border-brand-border px-3 py-2 text-xs font-semibold text-brand-ink hover:bg-brand-neutral focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent">Edit selected {selectedLayer.kind === "storyText" ? "text" : selectedLayer.kind} →</button>}
         <ArtworkLayersPanel
           items={artworkLayerItems}
           selectedLayer={selectedLayer}
@@ -675,10 +694,18 @@ function EditorContent() {
             if (selectedLayer) reorderLayer(selectedLayer.kind, selectedLayer.id, direction);
           }}
         />
+        </div>
       ),
     },
-    { id: "style", content: <CollageStyleToolbar /> },
+    { id: "style", content: <>{!isCollage && carousel && <CarouselDesignPanel carousel={carousel} onTheme={applyCarouselTheme} />}<CollageStyleToolbar /></> },
   ];
+  const dockPanels = panels.map((panel) => ({ ...panel, content: <>
+    <div className="mb-3 border-b border-brand-border pb-3">
+      <h2 className="sr-only">{EDITOR_TOOLS.find((tool) => tool.id === panel.id)?.label}</h2>
+      <p className="text-xs leading-relaxed text-brand-muted">{isCollage ? COLLAGE_PANEL_HELP[panel.id] : COLLAGE_PANEL_HELP[panel.id].replace("collage", "slide")}</p>
+    </div>
+    {panel.content}
+  </> }));
 
   const handleExport = () => setIsExportOpen(true);
   const handleOpenLivePreview = () => {
@@ -713,9 +740,11 @@ function EditorContent() {
   };
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-brand-paper text-brand-ink">
+    <div data-mode={documentMode} className="editor-workspace flex h-[100dvh] flex-col overflow-hidden bg-brand-paper text-brand-ink">
       <TopBar
-        onPreview={handleOpenLivePreview}
+        isCollage={isCollage}
+        documentMode={documentMode}
+        onPreview={isCollage ? handleOpenLivePreview : () => setIsCarouselPreviewOpen(true)}
         onExport={handleExport}
         onClear={() => setIsClearProjectOpen(true)}
         canUndo={canUndo}
@@ -731,101 +760,46 @@ function EditorContent() {
           {previewNotice}
         </p>
       )}
-      <div className="flex min-h-0 flex-1 pb-16 pt-14 md:pb-0">
+      <div className="editor-workspace-body flex min-h-0 flex-1 pb-16 pt-14 md:pb-0">
         <Toolbar
+          focusedChrome
           activeTool={openPanelIds.includes(activeTool) ? activeTool : null}
           onToolSelect={handleOpenPanel}
         />
         <PhotoToolbar ref={photoToolbarRef} />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col md:ml-16 md:flex-row">
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="flex shrink-0 justify-center px-3 py-2">
-              <div className="flex max-w-full flex-wrap items-center justify-center gap-2">
-                {/* Design opens the existing editorial text tools without changing document mode. */}
-                <div role="group" aria-label="Workspace mode and design" className="flex h-9 shrink-0 items-center rounded-md border border-brand-border bg-brand-paper p-0.5">
-                  {(["collage", "carousel"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      id={`workspace-mode-${mode}`}
-                      type="button"
-                      aria-pressed={documentMode === mode}
-                      onClick={() => handleDocumentModeChange(mode)}
-                      className={`h-8 rounded-sm px-3 text-xs font-semibold capitalize transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500 ${documentMode === mode ? "bg-redwell-600 text-white" : "text-brand-muted hover:bg-brand-neutral hover:text-brand-ink"}`}
-                    >
-                      {mode}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    aria-pressed={activeTool === "design"}
-                    onClick={() => handleOpenPanel("design")}
-                    className={`h-8 rounded-sm px-3 text-xs font-semibold capitalize transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500 ${activeTool === "design" ? "bg-redwell-600 text-white" : "text-brand-muted hover:bg-brand-neutral hover:text-brand-ink"}`}
-                  >
-                    Design
-                  </button>
+          <main className="editor-main flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="editor-controls flex shrink-0 border-b border-brand-border bg-brand-paper px-3 py-1.5">
+              {isCollage ? <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <select aria-label="Editor mode" value={documentMode} onChange={(event) => handleDocumentModeChange(event.target.value as DocumentMode)} className="h-9 max-w-full rounded-md border border-brand-border bg-brand-paper px-2 text-xs font-semibold text-brand-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"><option value="collage">Collage</option><option value="carousel">Carousel</option></select>
+                  <label className="flex min-w-0 items-center gap-2 text-[11px] font-medium text-brand-muted">
+                    <span className="hidden lg:inline">Format</span>
+                    <select aria-label="Canvas format" value={canvasFormatId} onChange={(event) => selectCanvasFormat(event.target.value)} className="h-9 min-w-0 max-w-full rounded-md border border-brand-border bg-brand-surface px-2 text-xs font-medium text-brand-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent">
+                      {CANVAS_FORMATS.map((format) => <option key={format.id} value={format.id}>{format.name} · {format.id === "square" ? "1:1" : format.id === "portrait" ? "4:5" : format.id === "story" ? "9:16" : "16:9"}</option>)}
+                    </select>
+                  </label>
                 </div>
-                {documentMode === "carousel" && carousel && (
-                  <CarouselNavigation
-                    carousel={carousel}
-                    onSelect={handleCarouselSlideChange}
-                    onAdd={handleAddCarouselSlide}
-                    onDuplicate={handleDuplicateCarouselSlide}
-                    onDelete={handleDeleteCarouselSlide}
-                    onPreview={() => setIsCarouselPreviewOpen(true)}
-                  />
-                )}
-                <div
-                  role="group"
-                  aria-label="Canvas format"
-                  className="flex min-w-0 max-w-full shrink items-center gap-1 overflow-x-auto rounded-md border border-brand-border bg-brand-paper px-2 py-1.5"
-                >
-                  <span className="mr-1 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-muted">
-                    Format
-                  </span>
-                  {CANVAS_FORMATS.map((format) => (
-                    <button
-                      key={format.id}
-                      type="button"
-                      onClick={() => selectCanvasFormat(format.id)}
-                      aria-pressed={canvasFormatId === format.id}
-                      className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-redwell-500 ${
-                        canvasFormatId === format.id
-                          ? "bg-redwell-600 text-white"
-                            : "text-brand-muted hover:bg-brand-neutral hover:text-brand-ink"
-                      }`}
-                    >
-                      {format.name}
-                    </button>
-                  ))}
+                <CanvasViewportControls viewport={viewport} onFit={handleFitToCanvas} />
+              </div> :
+              <div className="carousel-controls-row flex w-full min-w-0 items-center justify-between gap-2">
+                <div className="carousel-controls-actions flex min-w-0 items-center gap-1">
+                  <select aria-label="Editor mode" value={documentMode} onChange={(event) => handleDocumentModeChange(event.target.value as DocumentMode)} className="h-9 rounded border border-brand-border bg-brand-paper px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"><option value="collage">Collage</option><option value="carousel">Carousel</option></select>
+                  <select aria-label="Format for all carousel slides" value={canvasFormatId} onChange={(event) => selectCanvasFormat(event.target.value)} className="h-9 min-w-0 rounded border border-brand-border bg-brand-surface px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent">
+                    {CANVAS_FORMATS.map((format) => <option key={format.id} value={format.id}>{format.name} · All slides</option>)}
+                  </select>
+                  <button type="button" onClick={() => handleOpenPanel("style")} aria-expanded={activeTool === "style" && openPanelIds.includes("style")} aria-controls="dock-panel-style" data-active={activeTool === "style" && openPanelIds.includes("style")} title="Open theme and style controls" className="carousel-action carousel-action-secondary"><IconPalette size={15} aria-hidden="true" />Theme<span className="hidden xl:inline"> · {getCarouselTheme(carousel?.themeId)?.name ?? "Custom"}</span><IconChevronDown size={13} aria-hidden="true" /></button>
+                  <button type="button" onClick={() => setIsTemplatePickerOpen(true)} aria-haspopup="dialog" aria-expanded={isTemplatePickerOpen} data-active={isTemplatePickerOpen} title={isUnstartedCarousel ? "Start with a story arc, then make it yours." : "Story templates"} className="carousel-action carousel-action-creative"><IconLayoutCollage size={15} aria-hidden="true" />{isUnstartedCarousel ? "Choose a story" : "Templates"}</button>
+                  {isUnstartedCarousel && <button type="button" onClick={() => photoToolbarRef.current?.openPicker()} className="h-9 whitespace-nowrap rounded px-2 text-xs font-medium text-brand-muted hover:bg-brand-neutral focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent">Add photos first</button>}
                 </div>
-                {/* Viewport zoom controls — purely visual, no document mutation */}
                 <CanvasViewportControls viewport={viewport} onFit={handleFitToCanvas} />
               </div>
+              }
             </div>
-            {isUnstartedCarousel && (
-              <div className="mx-3 mb-1.5 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-md border border-brand-border bg-brand-surface px-3 py-2 sm:mx-5 sm:px-4 max-[820px]:gap-1 max-[820px]:py-1.5">
-                <div className="min-w-0">
-                  <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-redwell-700 max-[820px]:hidden">Your carousel, with a point of view</p>
-                  <p className="mt-1 text-base font-medium leading-tight tracking-[-0.02em] text-brand-ink sm:text-lg max-[820px]:mt-0 max-[820px]:text-sm">Start with a story arc, then make it yours.</p>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsTemplatePickerOpen(true)}
-                    className="h-8 rounded-md bg-redwell-600 px-3.5 text-xs font-semibold text-white transition-colors hover:bg-redwell-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500 focus-visible:ring-offset-2 max-[820px]:h-7 max-[820px]:px-2.5 max-[820px]:text-[10px]"
-                  >
-                    Choose a story
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => photoToolbarRef.current?.openPicker()}
-                    className="h-8 rounded-md px-2.5 text-xs font-medium text-brand-muted transition-colors hover:bg-brand-neutral hover:text-brand-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500 max-[820px]:h-7 max-[820px]:px-1.5 max-[820px]:text-[10px]"
-                  >
-                    Add photos first
-                  </button>
-                </div>
-              </div>
-            )}
+            {isEmptyCollage && <div className="editor-onboarding hidden shrink-0 flex-wrap items-center justify-between gap-3 border-b border-brand-border bg-brand-surface px-3 py-2 sm:flex">
+              <div className="min-w-0"><h1 className="text-lg font-semibold leading-tight tracking-[-0.04em] sm:text-2xl">Make room for your photos.</h1><p className="mt-1 hidden text-xs leading-relaxed text-brand-muted sm:block">Set your format above. Choose a layout or upload photos to start.</p></div>
+              <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => handleOpenPanel("layouts")} className="h-9 rounded-md border border-brand-border px-3 text-xs font-semibold text-brand-ink hover:bg-brand-neutral focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent">Choose layout</button><button type="button" onClick={() => photoToolbarRef.current?.openPicker()} className="h-9 rounded-md bg-brand-ink px-3 text-xs font-semibold text-brand-surface hover:bg-brand-ink/85 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent">Add photos</button></div>
+            </div>}
             <div className="relative min-h-0 flex-1">
               {/* CanvasViewport applies CSS zoom+pan only — never modifies document data */}
               <CanvasViewport viewport={viewport} onContainerResize={handleContainerResize}>
@@ -846,24 +820,35 @@ function EditorContent() {
                 />
               </CanvasViewport>
             </div>
+            {isCollage && <div className="editor-status flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-brand-border bg-brand-paper px-3 py-1 text-[10px] text-brand-muted">
+              <p className="min-w-0"><span className="font-medium text-brand-ink">{currentFormat.width} × {currentFormat.height}</span> px · {assignedPhotoCount}/{currentLayout.cells.length} slots filled{emptySlotCount > 0 ? ` · ${emptySlotCount} empty` : ""}</p>
+              <p className="hidden lg:block">Scroll to zoom · Space + drag to pan · Fit to recenter</p>
+            </div>}
             {documentMode === "carousel" && carousel && (
               <CarouselTimeline
                 carousel={carousel}
                 onSelect={handleCarouselSlideChange}
-                onAdd={handleAddCarouselSlide}
+                onAdd={() => setIsAddSlideOpen(true)}
+                onDuplicate={handleDuplicateCarouselSlide}
+                onDelete={handleDeleteCarouselSlide}
                 onReorder={reorderCarouselSlide}
+                templatesOpen={isTemplatePickerOpen}
+                addSlideOpen={isAddSlideOpen}
                 onTemplates={() => setIsTemplatePickerOpen(true)}
               />
             )}
           </main>
           <ResizableDock
-            panels={panels}
+            compact={documentMode === "carousel"}
+            focusedChrome
+            panels={dockPanels}
             openPanelIds={openPanelIds}
             activePanelId={activeTool}
-            width={dockWidth}
-            onWidthChange={setDockWidth}
+            width={documentMode === "carousel" ? carouselDockWidth : dockWidth}
+            onWidthChange={documentMode === "carousel" ? setCarouselDockWidth : setDockWidth}
             onSelectPanel={setActiveTool}
             onClosePanel={handleClosePanel}
+            onCollapse={() => setOpenPanelIds([])}
             onDockPanel={handleOpenPanel}
           />
         </div>
@@ -887,10 +872,12 @@ function EditorContent() {
         onCancel={() => setIsClearProjectOpen(false)}
         onConfirm={handleClearProject}
       />
+      {isAddSlideOpen && !isCollage && <CarouselAddSlideDialog onClose={() => setIsAddSlideOpen(false)} onAdd={handleAddCarouselSlide} />}
       <CarouselTemplatePicker
         open={isTemplatePickerOpen && documentMode === "carousel"}
         previewPhotos={templatePreviewPhotos}
         previewStyle={collageStyle}
+        hasExistingStory={!isUnstartedCarousel}
         onClose={() => setIsTemplatePickerOpen(false)}
         onApply={handleApplyCarouselTemplate}
       />
@@ -898,6 +885,7 @@ function EditorContent() {
         <CarouselPreviewDialog
           carousel={carousel}
           onClose={() => setIsCarouselPreviewOpen(false)}
+          onEdit={(slideId) => { handleCarouselSlideChange(slideId); setIsCarouselPreviewOpen(false); }}
         />
       )}
     </div>

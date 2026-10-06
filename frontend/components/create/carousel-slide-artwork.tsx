@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { resolveCreativeLayout } from "./carousel-composition";
+import { memo, type CSSProperties } from "react";
 import {
   getPhotoColorOverlay,
   getPhotoCssFilter,
@@ -15,22 +16,23 @@ import {
 } from "@/types/editor";
 import { ElementArtwork } from "./elements/element-artwork";
 import { getArtworkLayerStack } from "./artwork-composition";
+import { CanvasBackground, getActiveBackgroundImage } from "./canvas-background";
 
 interface CarouselSlideArtworkProps {
   slide: CarouselSlide;
   maxWidth: number;
   maxHeight: number;
   className?: string;
+  fitContainer?: boolean;
 }
 
-export function CarouselSlideArtwork({ slide, maxWidth, maxHeight, className }: CarouselSlideArtworkProps) {
+export const CarouselSlideArtwork = memo(function CarouselSlideArtwork({ slide, maxWidth, maxHeight, className, fitContainer = false }: CarouselSlideArtworkProps) {
   const format = CANVAS_FORMATS.find((candidate) => candidate.id === slide.canvasFormatId) ?? CANVAS_FORMATS[0];
-  const layout: LayoutDefinition = COLLAGE_LAYOUTS.find((candidate) => candidate.id === slide.selectedLayoutId) ??
+  const layout: LayoutDefinition = resolveCreativeLayout(slide.selectedLayoutId) ??
     COLLAGE_LAYOUTS.find((candidate) => candidate.photoCount === Math.min(Math.max(slide.photos.length, 1), 8)) ??
     COLLAGE_LAYOUTS[0];
   const style = slide.collageStyle ?? DEFAULT_COLLAGE_STYLE;
   const photosById = new Map(slide.photos.map((photo) => [photo.id, photo]));
-  const assignedPhotos = new Set(Object.values(slide.slotAssignments));
   const layerStack = getArtworkLayerStack({
     layout,
     photos: slide.photos,
@@ -44,14 +46,15 @@ export function CarouselSlideArtwork({ slide, maxWidth, maxHeight, className }: 
   const width = Math.max(1, Math.min(maxWidth, maxHeight * format.ratio));
   const height = width / format.ratio;
   const canvasScale = width / format.width;
-  const spacing = Math.min(style.spacing * canvasScale, 5);
+  const spacing = Math.min(style.spacing * canvasScale, Math.max(0, Math.min(...layout.cells.map((cell) => Math.min(cell.width * width, cell.height * height))) - 2 * canvasScale));
 
   return (
     <div
       className={`relative shrink-0 overflow-hidden shadow-md ${className ?? ""}`}
       style={{
-        width,
-        height,
+        width: fitContainer ? "100%" : width,
+        maxWidth: fitContainer ? width : undefined,
+        height: fitContainer ? "auto" : height,
         aspectRatio: `${format.width} / ${format.height}`,
         backgroundColor: style.backgroundColor,
         border: style.borderEnabled ? `${style.borderWidth * canvasScale}px solid ${style.borderColor}` : undefined,
@@ -59,6 +62,9 @@ export function CarouselSlideArtwork({ slide, maxWidth, maxHeight, className }: 
         containerType: "inline-size",
       }}
     >
+      <CanvasBackground style={style}
+        width={format.width - (style.borderEnabled ? style.borderWidth * 2 : 0)}
+        height={format.height - (style.borderEnabled ? style.borderWidth * 2 : 0)} />
       {layout.cells
         .map((cell, index) => ({ cell, index }))
         .sort((first, second) =>
@@ -76,7 +82,7 @@ export function CarouselSlideArtwork({ slide, maxWidth, maxHeight, className }: 
           height: `calc(${cell.height * 100}% - ${cellSpacing}px)`,
           overflow: "hidden",
           borderRadius: cell.frameStyle ? 2 * canvasScale : cell.isBackground ? 0 : style.cornerRadius * canvasScale,
-          backgroundColor: cell.frameStyle ? cell.frameColor ?? "#fff" : style.backgroundColor,
+          backgroundColor: cell.frameStyle ? cell.frameColor ?? "#fff" : getActiveBackgroundImage(style) ? "transparent" : style.backgroundColor,
           boxShadow: cell.frameStyle ? "0 3px 8px rgba(20, 18, 16, 0.24)" : undefined,
           transform: cell.rotation ? `rotate(${cell.rotation}deg)` : undefined,
           zIndex: photo
@@ -102,6 +108,8 @@ export function CarouselSlideArtwork({ slide, maxWidth, maxHeight, className }: 
                   alt=""
                   src={photo.src}
                   draggable={false}
+                  loading="lazy"
+                  decoding="async"
                   className="h-full w-full"
                   style={{
                     objectFit: photo.displayMode === "fit" ? "contain" : photo.displayMode === "stretch" ? "fill" : "cover",
@@ -148,7 +156,7 @@ export function CarouselSlideArtwork({ slide, maxWidth, maxHeight, className }: 
           style={{
             left: `${item.x * 100}%`,
             top: `${item.y * 100}%`,
-            width: "max-content",
+            width: item.textBox ? `${item.width * 100}%` : "max-content",
             maxWidth: `${item.width * 100}%`,
             zIndex: layerOrderByKey.get(`storyText:${item.id}`) ?? 0,
             color: item.color,
@@ -162,6 +170,7 @@ export function CarouselSlideArtwork({ slide, maxWidth, maxHeight, className }: 
             padding: item.padding ? `${item.padding * 100 / format.width}cqw` : undefined,
             textShadow: item.textShadow,
             boxSizing: "border-box",
+            overflowWrap: "anywhere",
           }}
         >
           {item.text}
@@ -174,14 +183,9 @@ export function CarouselSlideArtwork({ slide, maxWidth, maxHeight, className }: 
           layerOrder={layerOrderByKey.get(`element:${element.id}`) ?? 0}
         />
       ))}
-      {slide.photos.some((photo) => !assignedPhotos.has(photo.id)) && (
-        <span className="absolute bottom-1 right-1 rounded bg-white/90 px-1.5 py-0.5 text-[8px] font-medium text-gray-600">
-          +{slide.photos.length - assignedPhotos.size}
-        </span>
-      )}
     </div>
   );
-}
+});
 
 function rotationCoverScale(
   cellWidth: number,

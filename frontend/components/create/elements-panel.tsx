@@ -6,12 +6,13 @@ import { ELEMENT_CATEGORIES, ELEMENT_CATALOG, type CatalogElement, type ElementC
 import { ElementArtwork } from "./elements/element-artwork";
 
 interface ElementsPanelProps {
+  isCollage?: boolean;
   format: CanvasFormat;
   selectedAssetId?: string | null;
   onAdd: (element: CanvasElement) => void;
 }
 
-export function ElementsPanel({ format, selectedAssetId = null, onAdd }: ElementsPanelProps) {
+export function ElementsPanel({ isCollage = false, format, selectedAssetId = null, onAdd }: ElementsPanelProps) {
   const [category, setCategory] = useState<ElementCategoryFilter>("all");
   const [query, setQuery] = useState("");
   const filteredAssets = useMemo(() => {
@@ -56,12 +57,13 @@ export function ElementsPanel({ format, selectedAssetId = null, onAdd }: Element
       </div>
       <div
         className="mt-3 grid min-w-0 gap-2"
-        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))" }}
+        style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${isCollage ? 88 : 64}px, 1fr))` }}
         aria-live="polite"
       >
         {filteredAssets.map((asset) => (
           <ElementTile
             key={asset.id}
+            isCollage={isCollage}
             asset={asset}
             isSelected={asset.id === selectedAssetId}
             onClick={() => onAdd(createCanvasElement(asset, format.ratio))}
@@ -73,7 +75,7 @@ export function ElementsPanel({ format, selectedAssetId = null, onAdd }: Element
   );
 }
 
-function ElementTile({ asset, isSelected, onClick }: { asset: CatalogElement; isSelected: boolean; onClick: () => void }) {
+function ElementTile({ asset, isSelected, onClick, isCollage }: { asset: CatalogElement; isSelected: boolean; onClick: () => void; isCollage: boolean }) {
   return (
     <button
       type="button"
@@ -81,9 +83,9 @@ function ElementTile({ asset, isSelected, onClick }: { asset: CatalogElement; is
       aria-label={`Add ${asset.name}`}
       aria-pressed={isSelected}
       title={asset.name}
-      className={`flex h-[84px] min-w-0 flex-col items-center justify-center gap-1 rounded-lg border p-1.5 text-brand-ink transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent ${isSelected ? "border-brand-accent/60 bg-brand-accent-soft ring-1 ring-brand-accent" : "border-brand-border bg-brand-surface hover:border-brand-accent/40 hover:bg-brand-accent-soft"}`}
+      className={`flex ${isCollage ? "h-24 gap-2 rounded-md p-2" : "h-[84px] gap-1 rounded-lg p-1.5"} min-w-0 flex-col items-center justify-center border text-brand-ink transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent ${isSelected ? "border-brand-accent/60 bg-brand-accent-soft ring-1 ring-brand-accent" : "border-brand-border bg-brand-surface hover:border-brand-accent/40 hover:bg-brand-accent-soft"}`}
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center text-brand-ink">
+      <span className={`flex ${isCollage ? "h-10 w-10" : "h-8 w-8"} shrink-0 items-center justify-center text-brand-ink`}>
         <ElementArtwork assetId={asset.id} className="h-full w-full object-contain" />
       </span>
       <span className="w-full truncate text-center text-[10px] font-medium">{asset.name}</span>

@@ -113,7 +113,7 @@ export function useViewport(): ViewportControls {
   const fitToContainer = useCallback(
     (containerWidth: number, containerHeight: number, canvasWidth: number, canvasHeight: number) => {
       if (containerWidth <= 0 || containerHeight <= 0 || canvasWidth <= 0 || canvasHeight <= 0) return;
-      const padding = 32; // visual breathing room (px)
+      const padding = 16; // visual breathing room (px)
       const scaleW = (containerWidth - padding * 2) / canvasWidth;
       const scaleH = (containerHeight - padding * 2) / canvasHeight;
       const zoom = snapNearOne(clampZoom(Math.min(scaleW, scaleH)));

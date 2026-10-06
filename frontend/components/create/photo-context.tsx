@@ -40,6 +40,9 @@ import {
   constrainCarouselTextPlacement,
   getCarouselStoryTemplate,
 } from "./carousel-story-templates";
+import { resolveCreativeLayout } from "./carousel-composition";
+import { CAROUSEL_SLIDE_PRESETS, CAROUSEL_DEFAULT_TEXT } from "./carousel-slide-presets";
+import { getCarouselTheme, themeCarouselSlide, themeCarouselText } from "./carousel-themes";
 
 export type { Photo, PhotoDisplayMode, PhotoRotation } from "@/types/editor";
 
@@ -53,6 +56,7 @@ interface PhotoEditorState {
   storyLayoutId: CarouselStoryLayoutId | null;
   storySlideType: CarouselStorySlideType | null;
   storyText: CarouselStoryTextItem[];
+  themeDefaults?: Partial<CollageStyle>;
 }
 
 interface PhotoProviderProps {
@@ -68,10 +72,8 @@ interface HistoryState extends HistoryTimeline {
   collageTimeline: HistoryTimeline;
   carousel: CarouselState | null;
   slideTimelines: Record<string, HistoryTimeline>;
-  carouselOrderPast: CarouselOrderHistoryEntry[];
-  carouselOrderFuture: CarouselOrderHistoryEntry[];
-  carouselTemplatePast: CarouselTemplateHistoryEntry[];
-  carouselTemplateFuture: CarouselTemplateHistoryEntry[];
+  carouselDocumentPast: CarouselDocumentHistoryEntry[];
+  carouselDocumentFuture: CarouselDocumentHistoryEntry[];
 }
 
 function createPresentationHistory(presentation: {
@@ -98,27 +100,15 @@ function createPresentationHistory(presentation: {
   };
 }
 
-interface CarouselOrderHistoryEntry {
-  order: string[];
-  pastLengths: Record<string, number>;
-  futureLengths: Record<string, number>;
-}
-
 interface CarouselDocumentSnapshot {
   carousel: CarouselState;
   slideTimelines: Record<string, HistoryTimeline>;
   activeTimeline: HistoryTimeline;
-  carouselOrderPast: CarouselOrderHistoryEntry[];
-  carouselOrderFuture: CarouselOrderHistoryEntry[];
 }
 
-interface CarouselTemplateHistoryEntry {
+interface CarouselDocumentHistoryEntry {
   before: CarouselDocumentSnapshot;
   after: CarouselDocumentSnapshot;
-  undoPastLengths: Record<string, number>;
-  redoFutureLengths: Record<string, number>;
-  undoOrderPastLength: number;
-  redoOrderFutureLength: number;
 }
 
 interface HistoryTimeline {
@@ -130,6 +120,7 @@ interface HistoryTimeline {
 
 type HistoryAction =
   | { type: "commit"; update: (state: PhotoEditorState) => PhotoEditorState }
+  | { type: "commit-to-document"; mode: DocumentMode; slideId?: string; update: (state: PhotoEditorState) => PhotoEditorState }
   | { type: "transient"; update: (state: PhotoEditorState) => PhotoEditorState }
   | {
       type: "replace-presentation";
@@ -141,11 +132,14 @@ type HistoryAction =
   | { type: "redo" }
   | { type: "set-document-mode"; mode: DocumentMode }
   | { type: "select-carousel-slide"; slideId: string }
-  | { type: "add-carousel-slide" }
+  | { type: "add-carousel-slide"; presetId?: string }
   | { type: "duplicate-carousel-slide" }
   | { type: "delete-carousel-slide" }
   | { type: "clear-project" }
   | { type: "apply-carousel-template"; templateId: string }
+  | { type: "apply-carousel-theme"; themeId: string }
+  | { type: "set-carousel-format"; formatId: string }
+  | { type: "distribute-carousel-photos" }
   | {
       type: "reorder-carousel-slide";
       slideId: string;
@@ -171,10 +165,12 @@ interface PhotoContextType {
   canRedo: boolean;
   setDocumentMode: (mode: DocumentMode) => void;
   selectCarouselSlide: (slideId: string) => void;
-  addCarouselSlide: () => void;
+  addCarouselSlide: (presetId?: string) => void;
   duplicateCarouselSlide: () => void;
   deleteCarouselSlide: () => void;
   applyCarouselTemplate: (templateId: string) => void;
+  applyCarouselTheme: (themeId: string) => void;
+  distributeCarouselPhotos: () => void;
   applyCarouselStoryLayout: (layoutId: CarouselStoryLayoutId) => void;
   reorderCarouselSlide: (
     slideId: string,
@@ -185,6 +181,7 @@ interface PhotoContextType {
   selectCanvasFormat: (formatId: string) => void;
   addPhotos: (files: File[], targetSlotIndex?: number) => Promise<void>;
   replacePhoto: (id: string, file: File) => Promise<void>;
+  uploadBackgroundImage: (file: File) => Promise<void>;
   removePhoto: (id: string) => void;
   swapSlots: (fromSlotIndex: number, toSlotIndex: number) => void;
   updatePhoto: (
@@ -201,7 +198,7 @@ interface PhotoContextType {
     updates: Partial<Omit<CarouselStoryTextItem, "id">>,
     historyBehavior?: HistoryBehavior
   ) => void;
-  addStoryText: (role?: CarouselStoryTextRole) => void;
+  addStoryText: (role?: CarouselStoryTextRole) => string;
   removeStoryText: (id: string) => void;
   addElement: (element: CanvasElement) => void;
   updateElement: (
@@ -246,10 +243,8 @@ const initialHistoryState: HistoryState = {
   collageTimeline: initialTimeline,
   carousel: null,
   slideTimelines: {},
-  carouselOrderPast: [],
-  carouselOrderFuture: [],
-  carouselTemplatePast: [],
-  carouselTemplateFuture: [],
+  carouselDocumentPast: [],
+  carouselDocumentFuture: [],
 };
 
 const PhotoContext = createContext<PhotoContextType | undefined>(undefined);
@@ -279,7 +274,7 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
 
   const selectLayout = useCallback(
     (layoutId: string) => {
-      const layout = COLLAGE_LAYOUTS.find((candidate) => candidate.id === layoutId);
+      const layout = resolveCreativeLayout(layoutId);
       if (!layout) return;
 
       commit((currentState) => {
@@ -299,13 +294,17 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
   const selectCanvasFormat = useCallback(
     (formatId: string) => {
       if (!CANVAS_FORMATS.some((format) => format.id === formatId)) return;
+      if (history.documentMode === "carousel") {
+        dispatch({ type: "set-carousel-format", formatId });
+        return;
+      }
       commit((currentState) =>
         currentState.canvasFormatId === formatId
           ? currentState
           : { ...currentState, canvasFormatId: formatId }
       );
     },
-    [commit]
+    [commit, history.documentMode]
   );
 
   const addPhotos = useCallback(
@@ -339,7 +338,7 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
 
       if (newPhotos.length === 0) return;
 
-      commit((currentState) => {
+      dispatch({ type: "commit-to-document", mode: history.documentMode, slideId: history.carousel?.activeSlideId, update: (currentState) => {
         const existingLayers = getStateLayerStack(currentState);
         let nextLayerOrder = existingLayers.reduce(
           (maximum, layer) => Math.max(maximum, layer.layerOrder),
@@ -351,7 +350,7 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
         ];
         const hasSelectedLayout = currentState.selectedLayoutId !== null;
         const layout = hasSelectedLayout
-          ? COLLAGE_LAYOUTS.find((candidate) => candidate.id === currentState.selectedLayoutId)
+          ? resolveCreativeLayout(currentState.selectedLayoutId)
           : getDefaultLayout(photos.length);
 
         if (!layout) return { ...currentState, photos };
@@ -386,9 +385,9 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
           slotAssignments,
           selectedLayoutId: currentState.selectedLayoutId ?? layout.id,
         };
-      });
+      } });
     },
-    [commit]
+    [history.documentMode, history.carousel?.activeSlideId]
   );
 
   const replacePhoto = useCallback(
@@ -404,7 +403,7 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
         return;
       }
 
-      commit((state) => {
+      dispatch({ type: "commit-to-document", mode: history.documentMode, slideId: history.carousel?.activeSlideId, update: (state) => {
         let changed = false;
         const photos = state.photos.map((photo) => {
           if (photo.id !== id) return photo;
@@ -422,9 +421,9 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
           };
         });
         return changed ? { ...state, photos } : state;
-      });
+      } });
     },
-    [commit]
+    [history.documentMode, history.carousel?.activeSlideId]
   );
 
   const removePhoto = useCallback(
@@ -445,9 +444,7 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
     (fromSlotIndex: number, toSlotIndex: number) => {
       if (fromSlotIndex === toSlotIndex) return;
       commit((currentState) => {
-        const layout = COLLAGE_LAYOUTS.find(
-          (candidate) => candidate.id === currentState.selectedLayoutId
-        );
+        const layout = resolveCreativeLayout(currentState.selectedLayoutId);
         if (
           !layout ||
           fromSlotIndex < 0 ||
@@ -512,6 +509,26 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
     [commit]
   );
 
+  const uploadBackgroundImage = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) throw new Error("Choose an image file.");
+    const src = URL.createObjectURL(file);
+    objectUrlsRef.current.add(src);
+    try {
+      const { width, height } = await loadImage(src);
+      if (width <= 0 || height <= 0) throw new Error("This image has no usable dimensions.");
+      dispatch({ type: "commit-to-document", mode: history.documentMode, slideId: history.carousel?.activeSlideId,
+        update: (state) => ({ ...state, collageStyle: { ...state.collageStyle,
+          backgroundType: "image", backgroundImage: { src, name: file.name, width, height,
+            fit: "cover", positionX: 0.5, positionY: 0.5, zoom: 1, opacity: 1 },
+        } }),
+      });
+    } catch {
+      objectUrlsRef.current.delete(src);
+      URL.revokeObjectURL(src);
+      throw new Error("This image could not be loaded. Choose another image.");
+    }
+  }, [history.documentMode, history.carousel?.activeSlideId]);
+
   const updateStoryText = useCallback(
     (
       id: string,
@@ -547,42 +564,38 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
   );
 
   const addStoryText = useCallback(
-    (requestedRole?: CarouselStoryTextRole) => commit((state) => {
-      const storyLayout = state.storyLayoutId
-        ? CAROUSEL_STORY_LAYOUTS.find((layout) => layout.id === state.storyLayoutId)
-        : undefined;
-      const roleOrder: CarouselStoryTextRole[] = [
-        "title",
-        "subtitle",
-        "body",
-        "eyebrow",
-        "metadata",
-        "location",
-        "cta",
-        "quote",
-      ];
-      const role = requestedRole ??
-        roleOrder.find((candidate) => !state.storyText.some((item) => item.role === candidate));
-      if (!role) return state;
-      if (state.storyText.some((item) => item.role === role)) return state;
-      const placement = constrainCarouselTextPlacement(
-        storyLayout?.textPlacements.find((candidate) => candidate.role === role) ??
-          fallbackStoryTextPlacement(role, state.storyText.length)
-      );
-      return {
-        ...state,
-        storyText: [
-          ...state.storyText,
-          {
-            ...placement,
-            id: crypto.randomUUID(),
-            text: DEFAULT_STORY_TEXT_BY_ROLE[role],
-            layerOrder: getNextLayerOrder(state),
-          },
-        ],
-      };
-    }),
-    [commit]
+    (requestedRole?: CarouselStoryTextRole) => {
+      const textId = crypto.randomUUID();
+      commit((state) => {
+        const storyLayout = state.storyLayoutId
+          ? CAROUSEL_STORY_LAYOUTS.find((layout) => layout.id === state.storyLayoutId)
+          : undefined;
+        const roleOrder: CarouselStoryTextRole[] = [
+          "title", "subtitle", "body", "eyebrow", "metadata", "location", "cta", "quote",
+        ];
+        const role = requestedRole ??
+          roleOrder.find((candidate) => !state.storyText.some((item) => item.role === candidate)) ??
+          (history.documentMode === "carousel" ? "body" : undefined);
+        if (!role || state.storyText.length >= (history.documentMode === "carousel" ? 32 : 8)) return state;
+        const roleCount = state.storyText.filter((item) => item.role === role).length;
+        if (history.documentMode === "collage" && roleCount > 0) return state;
+        const basePlacement = storyLayout?.textPlacements.find((candidate) => candidate.role === role) ??
+          fallbackStoryTextPlacement(role, history.documentMode === "carousel" ? state.storyText.length % 6 : state.storyText.length);
+        const placement = constrainCarouselTextPlacement(history.documentMode === "carousel" && roleCount > 0
+          ? { ...basePlacement, x: basePlacement.x + (roleCount % 5) * 0.02, y: basePlacement.y + (roleCount % 5) * 0.03 }
+          : basePlacement);
+        const item: CarouselStoryTextItem = {
+          ...placement, id: textId,
+          text: history.documentMode === "carousel" ? CAROUSEL_DEFAULT_TEXT[role] : DEFAULT_STORY_TEXT_BY_ROLE[role],
+          layerOrder: getNextLayerOrder(state),
+          ...(history.documentMode === "carousel" ? { textBox: true } : {}),
+        };
+        const theme = history.documentMode === "carousel" ? getCarouselTheme(history.carousel?.themeId) : undefined;
+        return { ...state, storyText: [...state.storyText, theme ? themeCarouselText(item, theme, storyLayout, true) : item] };
+      });
+      return textId;
+    },
+    [commit, history.carousel?.themeId, history.documentMode]
   );
 
   const addElement = useCallback((element: CanvasElement) => {
@@ -688,18 +701,22 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
     (slideId: string) => dispatch({ type: "select-carousel-slide", slideId }),
     []
   );
-  const addCarouselSlide = useCallback(() => dispatch({ type: "add-carousel-slide" }), []);
+  const addCarouselSlide = useCallback((presetId?: string) => dispatch({ type: "add-carousel-slide", presetId }), []);
   const duplicateCarouselSlide = useCallback(() => dispatch({ type: "duplicate-carousel-slide" }), []);
   const deleteCarouselSlide = useCallback(() => dispatch({ type: "delete-carousel-slide" }), []);
   const applyCarouselTemplate = useCallback(
     (templateId: string) => dispatch({ type: "apply-carousel-template", templateId }),
     []
   );
+  const applyCarouselTheme = useCallback(
+    (themeId: string) => dispatch({ type: "apply-carousel-theme", themeId }), []
+  );
+  const distributeCarouselPhotos = useCallback(() => dispatch({ type: "distribute-carousel-photos" }), []);
   const applyCarouselStoryLayout = useCallback(
     (layoutId: CarouselStoryLayoutId) => {
       const storyLayout = CAROUSEL_STORY_LAYOUTS.find((candidate) => candidate.id === layoutId);
       const photoLayout = storyLayout
-        ? COLLAGE_LAYOUTS.find((candidate) => candidate.id === storyLayout.photoLayoutId)
+        ? resolveCreativeLayout(storyLayout.photoLayoutId)
         : undefined;
       if (!storyLayout || !photoLayout) return;
 
@@ -709,24 +726,31 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
           slotAssignments[slotIndex] = photo.id;
         });
         const storyText = currentState.storyText.map((item) => {
+          if (item.locked) return item;
           const placement = storyLayout.textPlacements.find((candidate) => candidate.role === item.role);
           return placement
             ? { ...item, ...constrainCarouselTextPlacement(placement), id: item.id, text: item.text }
             : item;
         });
 
-        return {
+        const slide: CarouselSlide = {
           ...currentState,
+          id: "active", order: 0,
           selectedLayoutId: storyLayout.photoLayoutId,
-          canvasFormatId: storyLayout.formatId,
+          canvasFormatId: currentState.canvasFormatId,
           collageStyle: { ...currentState.collageStyle, backgroundColor: storyLayout.backgroundColor },
           storyLayoutId: storyLayout.id,
           slotAssignments,
           storyText,
         };
+        const theme = getCarouselTheme(history.carousel?.themeId);
+        const themed = theme ? themeCarouselSlide(slide, theme, true) : slide;
+        return { ...currentState, selectedLayoutId: themed.selectedLayoutId,
+          storyLayoutId: storyLayout.id, slotAssignments, storyText: themed.storyText ?? [],
+          collageStyle: themed.collageStyle, themeDefaults: themed.themeDefaults };
       });
     },
-    [commit]
+    [commit, history.carousel?.themeId]
   );
   const reorderCarouselSlide = useCallback(
     (slideId: string, targetSlideId: string, placement: "before" | "after") =>
@@ -752,17 +776,19 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
           history.past.length > 0 ||
           hasChanged(history.transactionStart, present) ||
           (history.documentMode === "carousel" &&
-            (history.carouselOrderPast.length > 0 || history.carouselTemplatePast.length > 0)),
+            history.carouselDocumentPast.length > 0),
         canRedo:
           history.future.length > 0 ||
           (history.documentMode === "carousel" &&
-            (history.carouselOrderFuture.length > 0 || history.carouselTemplateFuture.length > 0)),
+            history.carouselDocumentFuture.length > 0),
         setDocumentMode,
         selectCarouselSlide,
         addCarouselSlide,
         duplicateCarouselSlide,
         deleteCarouselSlide,
         applyCarouselTemplate,
+        applyCarouselTheme,
+        distributeCarouselPhotos,
         applyCarouselStoryLayout,
         reorderCarouselSlide,
         selectLayout,
@@ -773,6 +799,7 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
         swapSlots,
         updatePhoto,
         updateCollageStyle,
+        uploadBackgroundImage,
         updateStoryText,
         addStoryText,
         removeStoryText,
@@ -794,6 +821,21 @@ export function PhotoProvider({ children, presentation }: PhotoProviderProps) {
 }
 
 function historyReducer(history: HistoryState, action: HistoryAction): HistoryState {
+  if (action.type === "commit-to-document") {
+    const current = persistActiveDocument(history);
+    if (action.mode === "carousel") {
+      const slide = current.carousel?.slides.find((item) => item.id === action.slideId);
+      if (!slide || !current.carousel) return history;
+      const timeline = current.slideTimelines[slide.id] ?? createTimeline(editorStateFromSlide(slide));
+      const updated = historyReducer({ ...current, ...timeline, documentMode: "carousel",
+        carousel: { ...current.carousel, activeSlideId: slide.id } }, { type: "commit", update: action.update });
+      const restored = selectHistoryCarouselSlide(updated, current.carousel.activeSlideId);
+      return current.documentMode === "collage"
+        ? { ...restored, ...current.collageTimeline, documentMode: "collage" } : restored;
+    }
+    const updated = historyReducer({ ...current, ...current.collageTimeline, documentMode: "collage" }, { type: "commit", update: action.update });
+    return current.documentMode === "carousel" ? { ...updated, ...getTimeline(current), documentMode: "carousel" } : updated;
+  }
   if (action.type === "replace-presentation") {
     return createPresentationHistory(action.presentation);
   }
@@ -801,51 +843,58 @@ function historyReducer(history: HistoryState, action: HistoryAction): HistorySt
   if (action.type === "select-carousel-slide") {
     return selectHistoryCarouselSlide(history, action.slideId);
   }
-  if (action.type === "add-carousel-slide") return addHistoryCarouselSlide(history, false);
+  if (action.type === "add-carousel-slide") return addHistoryCarouselSlide(history, false, action.presetId);
   if (action.type === "duplicate-carousel-slide") return addHistoryCarouselSlide(history, true);
   if (action.type === "delete-carousel-slide") return deleteHistoryCarouselSlide(history);
   if (action.type === "clear-project") return clearHistoryProject(history);
   if (action.type === "apply-carousel-template") {
     return applyCarouselTemplateHistory(history, action.templateId);
   }
+  if (action.type === "apply-carousel-theme" || action.type === "set-carousel-format") {
+    return updateCarouselDesignHistory(history, action);
+  }
   if (action.type === "reorder-carousel-slide") {
     return reorderHistoryCarouselSlide(history, action.slideId, action.targetSlideId, action.placement);
+  }
+  if (action.type === "distribute-carousel-photos") return distributeCarouselPhotosHistory(history);
+
+  // Slide edits stay local. If a document command is waiting and its newer edits
+  // live on another slide, bring that slide into view instead of silently doing nothing.
+  if (history.documentMode === "carousel" && history.carousel && (action.type === "undo" || action.type === "redo")) {
+    const entry = action.type === "undo" ? history.carouselDocumentPast.at(-1) : history.carouselDocumentFuture[0];
+    const checkpoint = action.type === "undo" ? entry?.after : entry?.before;
+    const field = action.type === "undo" ? "past" : "future";
+    if (checkpoint) {
+      const activeExpected = getSnapshotSlideState(checkpoint, history.carousel.activeSlideId);
+      if (activeExpected && !hasChanged(activeExpected, history.present)) {
+        const edited = history.carousel.slides.find((slide) => {
+          const expected = getSnapshotSlideState(checkpoint, slide.id);
+          const timeline = history.slideTimelines[slide.id];
+          return expected && timeline && timeline[field].length > 0 && hasChanged(expected, timeline.present);
+        });
+        if (edited) return historyReducer(selectHistoryCarouselSlide(history, edited.id), action);
+      }
+    }
   }
 
   if (
     action.type === "undo" &&
     history.documentMode === "carousel" &&
-    history.carouselOrderPast.length > 0 &&
-    !hasNewerSlideEdits(history, history.carouselOrderPast[history.carouselOrderPast.length - 1])
-  ) {
-    return undoCarouselSlideOrder(history);
-  }
-  if (
-    action.type === "undo" &&
-    history.documentMode === "carousel" &&
-    history.carouselTemplatePast.length > 0 &&
-    !hasNewerCarouselTemplateChanges(
+    history.carouselDocumentPast.length > 0 &&
+    !hasNewerCarouselDocumentChanges(
       history,
-      history.carouselTemplatePast[history.carouselTemplatePast.length - 1]
+      history.carouselDocumentPast[history.carouselDocumentPast.length - 1]
     )
   ) {
-    return undoCarouselTemplate(history);
+    return undoCarouselDocument(history);
   }
   if (
     action.type === "redo" &&
     history.documentMode === "carousel" &&
-    history.carouselOrderFuture.length > 0 &&
-    !hasUndoneSlideEdits(history, history.carouselOrderFuture[0])
+    history.carouselDocumentFuture.length > 0 &&
+    !hasUndoneCarouselDocumentChanges(history, history.carouselDocumentFuture[0])
   ) {
-    return redoCarouselSlideOrder(history);
-  }
-  if (
-    action.type === "redo" &&
-    history.documentMode === "carousel" &&
-    history.carouselTemplateFuture.length > 0 &&
-    !hasUndoneCarouselTemplateChanges(history, history.carouselTemplateFuture[0])
-  ) {
-    return redoCarouselTemplate(history);
+    return redoCarouselDocument(history);
   }
 
   switch (action.type) {
@@ -866,7 +915,7 @@ function historyReducer(history: HistoryState, action: HistoryAction): HistorySt
         transactionStart: null,
       });
       return committed.documentMode === "carousel"
-        ? { ...committed, carouselOrderFuture: [], carouselTemplateFuture: [] }
+        ? { ...committed, carouselDocumentFuture: [] }
         : committed;
     }
     case "transient": {
@@ -880,7 +929,7 @@ function historyReducer(history: HistoryState, action: HistoryAction): HistorySt
         : persistActiveDocument({ ...history, transactionStart: history.present });
     case "finish-transaction":
       return history.transactionStart && hasChanged(history.transactionStart, history.present)
-        ? clearCarouselOrderFuture(persistActiveDocument({
+        ? clearCarouselDocumentFuture(persistActiveDocument({
             ...history,
             past: appendSnapshot(history.past, history.transactionStart),
             present: history.present,
@@ -940,7 +989,7 @@ function clearHistoryProject(history: HistoryState): HistoryState {
 
   // Carousel state requires an active slide for the workspace to remain immediately usable.
   // A single empty slide represents a cleared carousel and keeps the collage timeline untouched.
-  const emptySlide = createEmptyCarouselSlide(emptyState, 0);
+  const emptySlide = themeCarouselSlide(createEmptyCarouselSlide({ ...emptyState, canvasFormatId: "portrait" }, 0), getCarouselTheme("redwell")!, true);
   const timeline = createTimeline(editorStateFromSlide(emptySlide));
   return {
     ...history,
@@ -950,12 +999,12 @@ function clearHistoryProject(history: HistoryState): HistoryState {
       slides: [emptySlide],
       activeSlideId: emptySlide.id,
       templateId: null,
+      themeId: "redwell",
+      canvasFormatId: "portrait",
     },
     slideTimelines: { [emptySlide.id]: timeline },
-    carouselOrderPast: [],
-    carouselOrderFuture: [],
-    carouselTemplatePast: [],
-    carouselTemplateFuture: [],
+        carouselDocumentPast: [],
+    carouselDocumentFuture: [],
   };
 }
 
@@ -968,12 +1017,17 @@ function setHistoryDocumentMode(history: HistoryState, mode: DocumentMode): Hist
   }
 
   if (!current.carousel) {
-    const slide = cloneEditorStateToSlide(current.present, 0);
+    const isEmpty = current.present.photos.length === 0 && current.present.elements.length === 0 && current.present.storyText.length === 0;
+    const slide = isEmpty
+      ? themeCarouselSlide({ ...createEmptyCarouselSlide(current.present, 0), canvasFormatId: "portrait", selectedLayoutId: null }, getCarouselTheme("redwell")!, true)
+      : cloneEditorStateToSlide(current.present, 0);
     const timeline = createTimeline(editorStateFromSlide(slide));
     const carousel: CarouselState = {
       id: crypto.randomUUID(),
       slides: [slide],
       activeSlideId: slide.id,
+      canvasFormatId: slide.canvasFormatId,
+      themeId: isEmpty ? "redwell" : null,
     };
     return {
       ...current,
@@ -1014,31 +1068,27 @@ function selectHistoryCarouselSlide(history: HistoryState, slideId: string): His
   };
 }
 
-function addHistoryCarouselSlide(history: HistoryState, shouldDuplicate: boolean): HistoryState {
+function addHistoryCarouselSlide(history: HistoryState, shouldDuplicate: boolean, presetId?: string): HistoryState {
   if (history.documentMode !== "carousel" || !history.carousel) return history;
-  const current = persistActiveDocument(history);
+  const current = settleCarouselHistory(history);
   const slides = [...current.carousel!.slides].sort((first, second) => first.order - second.order);
   const activeIndex = slides.findIndex((slide) => slide.id === current.carousel?.activeSlideId);
-  const storyTemplate = current.carousel?.templateId
-    ? getCarouselStoryTemplate(current.carousel.templateId)
-    : undefined;
-  const closingIndex = storyTemplate
-    ? slides.findIndex((candidate) => candidate.storySlideType === "ending" || candidate.storySlideType === "cta")
-    : -1;
-  const insertionIndex = shouldDuplicate
-    ? activeIndex + 1
-    : closingIndex >= 0 ? closingIndex : slides.length;
-  const slide = shouldDuplicate
+  const insertionIndex = activeIndex + 1;
+  const preset = CAROUSEL_SLIDE_PRESETS.find((item) => item.id === presetId);
+  const theme = getCarouselTheme(current.carousel?.themeId);
+  const source = shouldDuplicate
     ? cloneEditorStateToSlide(current.present, insertionIndex)
-    : storyTemplate
-      ? createStoryCarouselSlide(storyTemplate.overflowSlide, insertionIndex, [], [], current.present.collageStyle)
-      : createEmptyCarouselSlide(current.present, insertionIndex);
+    : preset
+      ? createStoryCarouselSlide(preset.definition, insertionIndex, [], [], current.present.collageStyle)
+      : { ...createEmptyCarouselSlide(current.present, insertionIndex), selectedLayoutId: "carousel-type", storyLayoutId: null };
+  const slide = !shouldDuplicate && theme ? themeCarouselSlide(source, theme, true) : source;
+  slide.canvasFormatId = current.carousel!.canvasFormatId ?? current.present.canvasFormatId;
   slides.splice(insertionIndex, 0, slide);
   const orderedSlides = slides.map((item, order) => ({ ...item, order }));
   const nextSlide = orderedSlides[insertionIndex];
   const timeline = createTimeline(editorStateFromSlide(nextSlide));
 
-  return {
+  return recordCarouselDocumentChange(current, {
     ...current,
     ...timeline,
     carousel: {
@@ -1047,9 +1097,8 @@ function addHistoryCarouselSlide(history: HistoryState, shouldDuplicate: boolean
       activeSlideId: nextSlide.id,
     },
     slideTimelines: { ...current.slideTimelines, [nextSlide.id]: timeline },
-    carouselOrderFuture: [],
-    carouselTemplateFuture: [],
-  };
+    carouselDocumentFuture: [],
+  });
 }
 
 function deleteHistoryCarouselSlide(history: HistoryState): HistoryState {
@@ -1057,7 +1106,7 @@ function deleteHistoryCarouselSlide(history: HistoryState): HistoryState {
     return history;
   }
 
-  const current = persistActiveDocument(history);
+  const current = settleCarouselHistory(history);
   const slides = [...current.carousel!.slides].sort((first, second) => first.order - second.order);
   const activeIndex = slides.findIndex((slide) => slide.id === current.carousel?.activeSlideId);
   if (activeIndex < 0) return history;
@@ -1071,7 +1120,7 @@ function deleteHistoryCarouselSlide(history: HistoryState): HistoryState {
     Object.entries(current.slideTimelines).filter(([slideId]) => slideId !== deletedSlide.id)
   );
 
-  return {
+  return recordCarouselDocumentChange(current, {
     ...current,
     ...timeline,
     carousel: {
@@ -1080,9 +1129,8 @@ function deleteHistoryCarouselSlide(history: HistoryState): HistoryState {
       activeSlideId: nextSlide.id,
     },
     slideTimelines: { ...slideTimelines, [nextSlide.id]: timeline },
-    carouselOrderFuture: [],
-    carouselTemplateFuture: [],
-  };
+      carouselDocumentFuture: [],
+  });
 }
 
 function applyCarouselTemplateHistory(history: HistoryState, templateId: string): HistoryState {
@@ -1090,8 +1138,7 @@ function applyCarouselTemplateHistory(history: HistoryState, templateId: string)
   const template = getCarouselStoryTemplate(templateId);
   if (!template) return history;
 
-  const current = clearCarouselHistoryFuture(persistActiveDocument(history));
-  const before = captureCarouselDocument(current);
+  const current = settleCarouselHistory(history);
   const sourceSlides = [...current.carousel!.slides].sort((first, second) => first.order - second.order);
   const photoIds = new Set<string>();
   const photos = sourceSlides.flatMap((slide) => slide.photos).filter((photo) => {
@@ -1108,12 +1155,12 @@ function applyCarouselTemplateHistory(history: HistoryState, templateId: string)
   const definitions = [...template.slides];
   const layoutCellCount = (layoutId: CarouselStoryLayoutId) => {
     const storyLayout = CAROUSEL_STORY_LAYOUTS.find((candidate) => candidate.id === layoutId);
-    return COLLAGE_LAYOUTS.find((candidate) => candidate.id === storyLayout?.photoLayoutId)?.cells.length ?? 1;
+    return resolveCreativeLayout(storyLayout?.photoLayoutId)?.cells.length ?? 1;
   };
   const initialCapacity = definitions.reduce((count, definition) => count + layoutCellCount(definition.layoutId), 0);
   let additionalCapacity = initialCapacity;
   let overflowIndex = 0;
-  while (additionalCapacity < photos.length) {
+  while (additionalCapacity < photos.length && layoutCellCount(template.overflowSlide.layoutId) > 0) {
     const endingIndex = definitions.findIndex((definition) => definition.type === "ending" || definition.type === "cta");
     const insertionIndex = endingIndex < 0 ? definitions.length : endingIndex;
     definitions.splice(insertionIndex, 0, { ...template.overflowSlide, id: `overflow-${overflowIndex++}` });
@@ -1128,7 +1175,7 @@ function applyCarouselTemplateHistory(history: HistoryState, templateId: string)
   let photoOffset = 0;
   const slides: CarouselSlide[] = definitions.map((definition, order) => {
     const storyLayout = CAROUSEL_STORY_LAYOUTS.find((candidate) => candidate.id === definition.layoutId)!;
-    const collageLayout = COLLAGE_LAYOUTS.find((candidate) => candidate.id === storyLayout.photoLayoutId)!;
+    const collageLayout = resolveCreativeLayout(storyLayout.photoLayoutId)!;
     const slidePhotos = photos.slice(photoOffset, photoOffset + collageLayout.cells.length);
     photoOffset += slidePhotos.length;
     const originalStyle = sourceSlides[order]?.collageStyle ?? current.present.collageStyle;
@@ -1141,7 +1188,10 @@ function applyCarouselTemplateHistory(history: HistoryState, templateId: string)
     );
   });
 
-  const activeSlide = slides[0];
+  if (photoOffset < photos.length) slides[slides.length - 1].photos.push(...photos.slice(photoOffset));
+  const theme = getCarouselTheme(template.themeId ?? "redwell")!;
+  const themedSlides = slides.map((slide) => ({ ...themeCarouselSlide(slide, theme, true), canvasFormatId: current.carousel!.canvasFormatId ?? current.present.canvasFormatId }));
+  const activeSlide = themedSlides[0];
   const timeline = createTimeline(editorStateFromSlide(activeSlide));
   const applied: HistoryState = {
     ...current,
@@ -1149,27 +1199,15 @@ function applyCarouselTemplateHistory(history: HistoryState, templateId: string)
     carousel: {
       ...current.carousel!,
       templateId: template.id,
-      slides,
+      themeId: theme.id,
+      canvasFormatId: activeSlide.canvasFormatId,
+      slides: themedSlides,
       activeSlideId: activeSlide.id,
     },
     slideTimelines: { [activeSlide.id]: timeline },
-    carouselOrderPast: [],
-    carouselOrderFuture: [],
-    carouselTemplateFuture: [],
+        carouselDocumentFuture: [],
   };
-  const entry: CarouselTemplateHistoryEntry = {
-    before,
-    after: captureCarouselDocument(applied),
-    undoPastLengths: getSlideHistoryLengths(applied, "past"),
-    redoFutureLengths: getSlideHistoryLengths(current, "future"),
-    undoOrderPastLength: applied.carouselOrderPast.length,
-    redoOrderFutureLength: before.carouselOrderFuture.length,
-  };
-
-  return {
-    ...applied,
-    carouselTemplatePast: [...current.carouselTemplatePast, entry].slice(-MAX_HISTORY_ENTRIES),
-  };
+  return recordCarouselDocumentChange(current, applied);
 }
 
 function reorderHistoryCarouselSlide(
@@ -1180,7 +1218,7 @@ function reorderHistoryCarouselSlide(
 ): HistoryState {
   if (history.documentMode !== "carousel" || !history.carousel || slideId === targetSlideId) return history;
 
-  const current = persistActiveDocument(history);
+  const current = settleCarouselHistory(history);
   const slides = [...current.carousel!.slides].sort((first, second) => first.order - second.order);
   const sourceIndex = slides.findIndex((slide) => slide.id === slideId);
   if (sourceIndex < 0 || !slides.some((slide) => slide.id === targetSlideId)) return history;
@@ -1192,95 +1230,15 @@ function reorderHistoryCarouselSlide(
   slides.splice(insertionIndex, 0, movingSlide);
   if (slides.every((slide, index) => slide.id === previousOrder[index])) return history;
 
-  const slideTimelines = Object.fromEntries(
-    Object.entries(current.slideTimelines).map(([id, timeline]) => [id, { ...timeline, future: [] }])
-  );
-  const currentOrderHistoryEntry: CarouselOrderHistoryEntry = {
-    order: previousOrder,
-    pastLengths: getSlideHistoryLengths(current, "past"),
-    futureLengths: getSlideHistoryLengths(current, "future", true),
-  };
-
-  return {
+  return recordCarouselDocumentChange(current, {
     ...current,
-    future: [],
     carousel: { ...current.carousel!, slides: reindexCarouselSlides(slides) },
-    slideTimelines,
-    carouselOrderPast: [...current.carouselOrderPast, currentOrderHistoryEntry].slice(-MAX_HISTORY_ENTRIES),
-    carouselOrderFuture: [],
-    carouselTemplateFuture: [],
-  };
+  });
 }
 
-function undoCarouselSlideOrder(history: HistoryState): HistoryState {
-  if (!history.carousel || history.carouselOrderPast.length === 0) return history;
-  const current = persistActiveDocument(history);
-  const [entry, ...remaining] = [...current.carouselOrderPast].reverse();
-  const carouselOrderPast = remaining.reverse();
-  const currentOrder = [...current.carousel!.slides]
-    .sort((first, second) => first.order - second.order)
-    .map((slide) => slide.id);
-  const slides = applyCarouselSlideOrder(current.carousel!.slides, entry.order);
-
-  return {
-    ...current,
-    carousel: { ...current.carousel!, slides },
-    carouselOrderPast,
-    carouselOrderFuture: [{ ...entry, order: currentOrder }, ...current.carouselOrderFuture],
-  };
-}
-
-function redoCarouselSlideOrder(history: HistoryState): HistoryState {
-  if (!history.carousel || history.carouselOrderFuture.length === 0) return history;
-  const current = persistActiveDocument(history);
-  const [entry, ...carouselOrderFuture] = current.carouselOrderFuture;
-  const currentOrder = [...current.carousel!.slides]
-    .sort((first, second) => first.order - second.order)
-    .map((slide) => slide.id);
-  const slides = applyCarouselSlideOrder(current.carousel!.slides, entry.order);
-
-  return {
-    ...current,
-    carousel: { ...current.carousel!, slides },
-    carouselOrderPast: [...current.carouselOrderPast, { ...entry, order: currentOrder }].slice(-MAX_HISTORY_ENTRIES),
-    carouselOrderFuture,
-  };
-}
-
-function getSlideHistoryLengths(
-  history: HistoryState,
-  field: "past" | "future",
-  clearActive = false
-): Record<string, number> {
-  if (!history.carousel) return {};
-  return Object.fromEntries(
-    history.carousel.slides.map((slide) => {
-      const timeline = slide.id === history.carousel?.activeSlideId
-        ? getTimeline(history)
-        : history.slideTimelines[slide.id];
-      return [slide.id, clearActive && (field === "future" || slide.id === history.carousel?.activeSlideId)
-        ? 0
-        : timeline?.[field].length ?? 0];
-    })
-  );
-}
-
-function hasNewerSlideEdits(history: HistoryState, entry: CarouselOrderHistoryEntry): boolean {
-  if (history.transactionStart && hasChanged(history.transactionStart, history.present)) return true;
-  return Object.entries(getSlideHistoryLengths(history, "past")).some(
-    ([slideId, length]) => length > (entry.pastLengths[slideId] ?? 0)
-  );
-}
-
-function hasUndoneSlideEdits(history: HistoryState, entry: CarouselOrderHistoryEntry): boolean {
-  return Object.entries(getSlideHistoryLengths(history, "future")).some(
-    ([slideId, length]) => length > (entry.futureLengths[slideId] ?? 0)
-  );
-}
-
-function clearCarouselOrderFuture(history: HistoryState): HistoryState {
+function clearCarouselDocumentFuture(history: HistoryState): HistoryState {
   return history.documentMode === "carousel"
-    ? { ...history, carouselOrderFuture: [], carouselTemplateFuture: [] }
+    ? { ...history, carouselDocumentFuture: [] }
     : history;
 }
 
@@ -1291,9 +1249,71 @@ function clearCarouselHistoryFuture(history: HistoryState): HistoryState {
     slideTimelines: Object.fromEntries(
       Object.entries(history.slideTimelines).map(([slideId, timeline]) => [slideId, { ...timeline, future: [] }])
     ),
-    carouselOrderFuture: [],
-    carouselTemplateFuture: [],
+      carouselDocumentFuture: [],
   };
+}
+
+function settleCarouselHistory(history: HistoryState): HistoryState {
+  return clearCarouselHistoryFuture(historyReducer(history, { type: "finish-transaction" }));
+}
+
+/** A document command is a history barrier: snapshots retain slide timelines and shared image URLs. */
+function recordCarouselDocumentChange(before: HistoryState, after: HistoryState): HistoryState {
+  const applied = { ...after, carouselDocumentFuture: [] };
+  const entry: CarouselDocumentHistoryEntry = {
+    before: captureCarouselDocument(before), after: captureCarouselDocument(applied),
+  };
+  return { ...applied, carouselDocumentPast: [...before.carouselDocumentPast, entry].slice(-MAX_HISTORY_ENTRIES) };
+}
+
+function updateCarouselDesignHistory(
+  history: HistoryState,
+  action: { type: "apply-carousel-theme"; themeId: string } | { type: "set-carousel-format"; formatId: string }
+): HistoryState {
+  if (history.documentMode !== "carousel" || !history.carousel) return history;
+  const theme = action.type === "apply-carousel-theme" ? getCarouselTheme(action.themeId) : undefined;
+  if (action.type === "apply-carousel-theme" && !theme) return history;
+  if (action.type === "set-carousel-format" && !CANVAS_FORMATS.some((format) => format.id === action.formatId)) return history;
+  if (action.type === "set-carousel-format" && history.carousel.slides.every((slide) => slide.canvasFormatId === action.formatId)) return history;
+  if (theme && history.carousel.themeId === theme.id) return history;
+  const current = settleCarouselHistory(history);
+  const slides = current.carousel!.slides.map((slide) => theme
+    ? themeCarouselSlide(slide, theme)
+    : { ...slide, canvasFormatId: action.type === "set-carousel-format" ? action.formatId : slide.canvasFormatId });
+  const slideTimelines = Object.fromEntries(slides.map((slide) => {
+    const timeline = current.slideTimelines[slide.id] ?? createTimeline(editorStateFromSlide(slide));
+    return [slide.id, { ...timeline, present: editorStateFromSlide(slide), transactionStart: null }];
+  }));
+  return recordCarouselDocumentChange(current, {
+    ...current, ...slideTimelines[current.carousel!.activeSlideId], slideTimelines,
+    carousel: { ...current.carousel!, slides,
+      ...(theme ? { themeId: theme.id } : action.type === "set-carousel-format" ? { canvasFormatId: action.formatId } : {}) },
+  });
+}
+
+function distributeCarouselPhotosHistory(history: HistoryState): HistoryState {
+  if (history.documentMode !== "carousel" || !history.carousel) return history;
+  const assigned = new Set(Object.values(history.present.slotAssignments));
+  const unplaced = history.present.photos.filter((photo) => !assigned.has(photo.id));
+  if (!unplaced.length) return history;
+  const current = settleCarouselHistory(history);
+  const slides = [...current.carousel!.slides].sort((a, b) => a.order - b.order);
+  const index = slides.findIndex((slide) => slide.id === current.carousel!.activeSlideId);
+  const sourceState = { ...current.present, photos: current.present.photos.filter((photo) => assigned.has(photo.id)) };
+  slides[index] = { ...slides[index], ...sourceState };
+  const theme = getCarouselTheme(current.carousel!.themeId);
+  const definition = CAROUSEL_SLIDE_PRESETS.find((preset) => preset.id === "photo")!.definition;
+  const added = unplaced.map((photo, offset) => {
+    const slide = createStoryCarouselSlide(definition, index + offset + 1, [photo], [], current.present.collageStyle);
+    return { ...(theme ? themeCarouselSlide(slide, theme, true) : slide), canvasFormatId: current.carousel!.canvasFormatId ?? current.present.canvasFormatId };
+  });
+  slides.splice(index + 1, 0, ...added);
+  const slideTimelines = { ...current.slideTimelines,
+    [current.carousel!.activeSlideId]: { ...getTimeline(current), present: sourceState },
+    ...Object.fromEntries(added.map((slide) => [slide.id, createTimeline(editorStateFromSlide(slide))])),
+  };
+  return recordCarouselDocumentChange(current, { ...current, ...slideTimelines[added[0].id], slideTimelines,
+    carousel: { ...current.carousel!, slides: reindexCarouselSlides(slides), activeSlideId: added[0].id } });
 }
 
 function captureCarouselDocument(history: HistoryState): CarouselDocumentSnapshot {
@@ -1302,8 +1322,6 @@ function captureCarouselDocument(history: HistoryState): CarouselDocumentSnapsho
     carousel: history.carousel,
     slideTimelines: history.slideTimelines,
     activeTimeline: getTimeline(history),
-    carouselOrderPast: history.carouselOrderPast,
-    carouselOrderFuture: history.carouselOrderFuture,
   };
 }
 
@@ -1316,81 +1334,75 @@ function restoreCarouselDocument(
     ...snapshot.activeTimeline,
     carousel: snapshot.carousel,
     slideTimelines: snapshot.slideTimelines,
-    carouselOrderPast: snapshot.carouselOrderPast,
-    carouselOrderFuture: snapshot.carouselOrderFuture,
   };
 }
 
-function hasNewerCarouselTemplateChanges(
+function hasNewerCarouselDocumentChanges(
   history: HistoryState,
-  entry: CarouselTemplateHistoryEntry
+  entry: CarouselDocumentHistoryEntry
 ): boolean {
   if (!history.carousel) return false;
   if (history.transactionStart && hasChanged(history.transactionStart, history.present)) return true;
-  if (history.carouselOrderPast.length > entry.undoOrderPastLength) return true;
   const currentSlideIds = history.carousel.slides.map((slide) => slide.id).sort();
   const expectedSlideIds = entry.after.carousel.slides.map((slide) => slide.id).sort();
   if (
     currentSlideIds.length !== expectedSlideIds.length ||
     currentSlideIds.some((slideId, index) => slideId !== expectedSlideIds[index])
   ) return true;
-  return Object.entries(getSlideHistoryLengths(history, "past")).some(
-    ([slideId, length]) => length > (entry.undoPastLengths[slideId] ?? 0)
-  );
+  return history.carousel.slides.some((slide) => {
+    const expected = getSnapshotSlideState(entry.after, slide.id);
+    const current = slide.id === history.carousel?.activeSlideId ? history.present : history.slideTimelines[slide.id]?.present ?? editorStateFromSlide(slide);
+    return !expected || hasChanged(expected, current);
+  });
 }
 
-function hasUndoneCarouselTemplateChanges(
+function hasUndoneCarouselDocumentChanges(
   history: HistoryState,
-  entry: CarouselTemplateHistoryEntry
+  entry: CarouselDocumentHistoryEntry
 ): boolean {
   if (!history.carousel) return false;
-  if (history.carouselOrderFuture.length > entry.redoOrderFutureLength) return true;
   const currentSlideIds = history.carousel.slides.map((slide) => slide.id).sort();
   const expectedSlideIds = entry.before.carousel.slides.map((slide) => slide.id).sort();
   if (
     currentSlideIds.length !== expectedSlideIds.length ||
     currentSlideIds.some((slideId, index) => slideId !== expectedSlideIds[index])
   ) return true;
-  return Object.entries(getSlideHistoryLengths(history, "future")).some(
-    ([slideId, length]) => length > (entry.redoFutureLengths[slideId] ?? 0)
-  );
+  return history.carousel.slides.some((slide) => {
+    const expected = getSnapshotSlideState(entry.before, slide.id);
+    const current = slide.id === history.carousel?.activeSlideId ? history.present : history.slideTimelines[slide.id]?.present ?? editorStateFromSlide(slide);
+    return !expected || hasChanged(expected, current);
+  });
 }
 
-function undoCarouselTemplate(history: HistoryState): HistoryState {
-  if (history.carouselTemplatePast.length === 0) return history;
+function getSnapshotSlideState(snapshot: CarouselDocumentSnapshot, slideId: string) {
+  if (snapshot.carousel.activeSlideId === slideId) return snapshot.activeTimeline.present;
+  const slide = snapshot.carousel.slides.find((candidate) => candidate.id === slideId);
+  return snapshot.slideTimelines[slideId]?.present ?? (slide ? editorStateFromSlide(slide) : undefined);
+}
+
+function undoCarouselDocument(history: HistoryState): HistoryState {
+  if (history.carouselDocumentPast.length === 0) return history;
   const current = persistActiveDocument(history);
-  const [entry, ...remaining] = [...current.carouselTemplatePast].reverse();
-  const carouselTemplatePast = remaining.reverse();
+  const [entry, ...remaining] = [...current.carouselDocumentPast].reverse();
+  const carouselDocumentPast = remaining.reverse();
   const after = captureCarouselDocument(current);
   const restored = restoreCarouselDocument(current, entry.before);
   return {
     ...restored,
-    carouselTemplatePast,
-    carouselTemplateFuture: [{ ...entry, after }, ...current.carouselTemplateFuture],
+    carouselDocumentPast,
+    carouselDocumentFuture: [{ ...entry, after }, ...current.carouselDocumentFuture],
   };
 }
 
-function redoCarouselTemplate(history: HistoryState): HistoryState {
-  if (history.carouselTemplateFuture.length === 0) return history;
-  const [entry, ...carouselTemplateFuture] = history.carouselTemplateFuture;
+function redoCarouselDocument(history: HistoryState): HistoryState {
+  if (history.carouselDocumentFuture.length === 0) return history;
+  const [entry, ...carouselDocumentFuture] = history.carouselDocumentFuture;
   const restored = restoreCarouselDocument(history, entry.after);
   return {
     ...restored,
-    carouselTemplatePast: [...history.carouselTemplatePast, entry],
-    carouselTemplateFuture,
+    carouselDocumentPast: [...history.carouselDocumentPast, entry],
+    carouselDocumentFuture,
   };
-}
-
-function applyCarouselSlideOrder(slides: CarouselSlide[], order: string[]): CarouselSlide[] {
-  const slidesById = new Map(slides.map((slide) => [slide.id, slide]));
-  const orderedSlides = order.flatMap((slideId) => {
-    const slide = slidesById.get(slideId);
-    if (!slide) return [];
-    slidesById.delete(slideId);
-    return [slide];
-  });
-  orderedSlides.push(...slidesById.values());
-  return reindexCarouselSlides(orderedSlides);
 }
 
 function reindexCarouselSlides(slides: CarouselSlide[]): CarouselSlide[] {
@@ -1453,19 +1465,22 @@ function createStoryCarouselSlide(
 ): CarouselSlide {
   const storyLayout = CAROUSEL_STORY_LAYOUTS.find((candidate) => candidate.id === definition.layoutId);
   if (!storyLayout) return createEmptyCarouselSlide({ ...initialEditorState, collageStyle }, order);
+  const storyText = createStoryText(definition, storyLayout.textPlacements).map((item, index) => ({
+    ...item, layerOrder: photos.length + index,
+  }));
 
   return {
     id: crypto.randomUUID(),
     order,
-    photos,
+    photos: photos.map((photo, index) => ({ ...photo, layerOrder: index })),
     slotAssignments: Object.fromEntries(photos.map((photo, index) => [index, photo.id])),
     canvasFormatId: storyLayout.formatId,
     selectedLayoutId: storyLayout.photoLayoutId,
     collageStyle: { ...collageStyle, backgroundColor: storyLayout.backgroundColor },
-    elements,
+    elements: elements.map((element, index) => ({ ...element, zIndex: index, layerOrder: photos.length + storyText.length + index })),
     storyLayoutId: storyLayout.id,
     storySlideType: definition.type,
-    storyText: createStoryText(definition, storyLayout.textPlacements),
+    storyText,
   };
 }
 
@@ -1490,7 +1505,7 @@ function createStoryText(
     const placement = constrainCarouselTextPlacement(
       placements.find((candidate) => candidate.role === role) ?? fallbackStoryTextPlacement(role, index)
     );
-    return [{ ...placement, id: crypto.randomUUID(), text: value }];
+    return [{ ...placement, id: crypto.randomUUID(), text: value, textBox: true }];
   });
 }
 
@@ -1505,6 +1520,7 @@ function editorStateFromSlide(slide: CarouselSlide): PhotoEditorState {
     storyLayoutId: slide.storyLayoutId ?? null,
     storySlideType: slide.storySlideType ?? null,
     storyText: slide.storyText ?? [],
+    themeDefaults: slide.themeDefaults,
   };
 }
 
@@ -1518,7 +1534,7 @@ function cloneEditorStateToSlide(state: PhotoEditorState, order: number): Carous
     ])
   );
   const elements = state.elements.map((element) => ({ ...element, id: crypto.randomUUID() }));
-  const storyText = state.storyText.map((item) => ({ ...item, id: crypto.randomUUID() }));
+  const storyText = state.storyText.map((item) => ({ ...item, id: crypto.randomUUID(), textBox: true }));
 
   return {
     id: crypto.randomUUID(),
@@ -1532,6 +1548,7 @@ function cloneEditorStateToSlide(state: PhotoEditorState, order: number): Carous
     storyLayoutId: state.storyLayoutId,
     storySlideType: state.storySlideType,
     storyText,
+    themeDefaults: state.themeDefaults,
   };
 }
 
@@ -1546,9 +1563,12 @@ function hasChanged(previous: PhotoEditorState | null, current: PhotoEditorState
     previous.canvasFormatId !== current.canvasFormatId ||
     previous.storyLayoutId !== current.storyLayoutId ||
     previous.storySlideType !== current.storySlideType ||
+    JSON.stringify(previous.themeDefaults) !== JSON.stringify(current.themeDefaults) ||
     previous.collageStyle.spacing !== current.collageStyle.spacing ||
     previous.collageStyle.cornerRadius !== current.collageStyle.cornerRadius ||
     previous.collageStyle.backgroundColor !== current.collageStyle.backgroundColor ||
+    previous.collageStyle.backgroundType !== current.collageStyle.backgroundType ||
+    previous.collageStyle.backgroundImage !== current.collageStyle.backgroundImage ||
     previous.collageStyle.borderEnabled !== current.collageStyle.borderEnabled ||
     previous.collageStyle.borderWidth !== current.collageStyle.borderWidth ||
     previous.collageStyle.borderColor !== current.collageStyle.borderColor ||
@@ -1573,6 +1593,10 @@ function hasChanged(previous: PhotoEditorState | null, current: PhotoEditorState
     return (
       !currentPhoto ||
       previousPhoto.id !== currentPhoto.id ||
+      previousPhoto.src !== currentPhoto.src ||
+      previousPhoto.visible !== currentPhoto.visible ||
+      previousPhoto.locked !== currentPhoto.locked ||
+      previousPhoto.layerOrder !== currentPhoto.layerOrder ||
       previousPhoto.displayMode !== currentPhoto.displayMode ||
       previousPhoto.positionX !== currentPhoto.positionX ||
       previousPhoto.positionY !== currentPhoto.positionY ||
@@ -1600,7 +1624,7 @@ function getDefaultLayout(photoCount: number) {
 
 function getStateLayerStack(state: PhotoEditorState) {
   const layout = state.selectedLayoutId
-    ? COLLAGE_LAYOUTS.find((candidate) => candidate.id === state.selectedLayoutId)
+    ? resolveCreativeLayout(state.selectedLayoutId)
     : getDefaultLayout(state.photos.length);
   return getArtworkLayerStack({
     layout,

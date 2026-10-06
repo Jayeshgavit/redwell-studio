@@ -159,7 +159,24 @@ export type CarouselStoryLayoutId =
   | "cinematic"
   | "travel-journal"
   | "seamless"
-  | "fashion";
+  | "fashion"
+  | "statement"
+  | "reading"
+  | "photo-note"
+  | "comparison"
+  | "closing"
+  | "feature-column"
+  | "number-note"
+  | "checklist"
+  | "step-note"
+  | "quiet-quote"
+  | "gallery-caption"
+  | "wide-screen"
+  | "portrait-label"
+  | "margin-cover"
+  | "snapshot-note"
+  | "detail-pair"
+  | "end-card";
 
 export type CarouselStoryLayoutCategory =
   | "Featured"
@@ -231,6 +248,10 @@ export interface CarouselStoryTextItem extends CarouselStoryTextPlacement {
   layerOrder?: number;
   visible?: boolean;
   locked?: boolean;
+  /** Last generated theme values. Different current values are local overrides. */
+  themeDefaults?: Partial<CarouselStoryTextPlacement>;
+  /** Fixed-width flowing text used by Carousel; legacy Collage text stays intrinsic. */
+  textBox?: boolean;
 }
 
 export interface CarouselStoryLayoutDefinition {
@@ -242,6 +263,7 @@ export interface CarouselStoryLayoutDefinition {
   backgroundColor: string;
   elementZones: LayoutCell[];
   textPlacements: CarouselStoryTextPlacement[];
+  themeTone?: "paper" | "ink" | "photo";
 }
 
 export interface CarouselStorySlideDefinition {
@@ -266,6 +288,7 @@ export interface CarouselStoryTemplateDefinition {
   description: string;
   slides: CarouselStorySlideDefinition[];
   overflowSlide: CarouselStorySlideDefinition;
+  themeId?: string;
 }
 
 export interface LayoutDefinition {
@@ -273,12 +296,28 @@ export interface LayoutDefinition {
   name: string;
   photoCount: number;
   cells: LayoutCell[];
+  /** Explicit discovery tags; older presets retain their name-based filters. */
+  categories?: Array<"Featured" | "Hero" | "Grid" | "Editorial" | "Creative">;
+}
+
+export interface CanvasBackgroundImage {
+  src: string;
+  name: string;
+  width: number;
+  height: number;
+  fit: "cover" | "contain";
+  positionX: number;
+  positionY: number;
+  zoom: number;
+  opacity: number;
 }
 
 export interface CollageStyle {
   spacing: number;
   cornerRadius: number;
   backgroundColor: string;
+  backgroundType?: "color" | "image";
+  backgroundImage?: CanvasBackgroundImage | null;
   borderEnabled: boolean;
   borderWidth: number;
   borderColor: string;
@@ -298,6 +337,7 @@ export interface CarouselSlide {
   storyLayoutId?: CarouselStoryLayoutId | null;
   storySlideType?: CarouselStorySlideType | null;
   storyText?: CarouselStoryTextItem[];
+  themeDefaults?: Partial<CollageStyle>;
 }
 
 export interface CarouselState {
@@ -305,6 +345,8 @@ export interface CarouselState {
   slides: CarouselSlide[];
   activeSlideId: string;
   templateId?: string | null;
+  themeId?: string | null;
+  canvasFormatId?: string;
 }
 
 export const DEFAULT_COLLAGE_STYLE = {
@@ -1120,6 +1162,55 @@ export const COLLAGE_LAYOUTS = [
       { x: 0.1, y: 0.72, width: 0.23, height: 0.28, zIndex: 2 },
     ],
   },
+  // Quiet single frames: whitespace is part of the composition, not another slot.
+  { id: "1-margin-study", name: "Margin study", photoCount: 1, categories: ["Featured", "Editorial"],
+    cells: [{ x: 0.3, y: 0.08, width: 0.62, height: 0.76 }] },
+  { id: "1-horizon", name: "Quiet horizon", photoCount: 1, categories: ["Hero", "Editorial"],
+    cells: [{ x: 0.06, y: 0.3, width: 0.88, height: 0.4 }] },
+  { id: "1-keepsake", name: "Keepsake", photoCount: 1, categories: ["Creative"],
+    cells: [{ x: 0.2, y: 0.12, width: 0.6, height: 0.72, frameStyle: "polaroid", frameColor: "#f4eee4", rotation: -2 }] },
+  { id: "2-offset-pair", name: "Offset pair", photoCount: 2, categories: ["Featured", "Editorial"],
+    cells: [{ x: 0.06, y: 0.08, width: 0.42, height: 0.62 }, { x: 0.54, y: 0.3, width: 0.4, height: 0.62 }] },
+  { id: "2-window-detail", name: "Window + detail", photoCount: 2, categories: ["Hero", "Creative"],
+    cells: [{ x: 0.06, y: 0.06, width: 0.76, height: 0.78 }, { x: 0.6, y: 0.6, width: 0.34, height: 0.32, zIndex: 1, frameStyle: "card", frameColor: "#e8ece4" }] },
+  { id: "2-cinema-pair", name: "Cinema pair", photoCount: 2, categories: ["Editorial"],
+    cells: [{ x: 0.08, y: 0.12, width: 0.84, height: 0.3 }, { x: 0.08, y: 0.56, width: 0.84, height: 0.3 }] },
+  { id: "3-gallery-walk", name: "Gallery walk", photoCount: 3, categories: ["Editorial"],
+    cells: [{ x: 0.06, y: 0.24, width: 0.26, height: 0.5 }, { x: 0.37, y: 0.1, width: 0.26, height: 0.5 }, { x: 0.68, y: 0.36, width: 0.26, height: 0.5 }] },
+  { id: "3-hero-ledger", name: "Hero ledger", photoCount: 3, categories: ["Featured", "Hero", "Editorial"],
+    cells: [{ x: 0.06, y: 0.06, width: 0.88, height: 0.52 }, { x: 0.06, y: 0.66, width: 0.28, height: 0.28 }, { x: 0.4, y: 0.66, width: 0.28, height: 0.28 }] },
+  { id: "3-snapshot-drift", name: "Snapshot drift", photoCount: 3, categories: ["Creative"],
+    cells: [{ x: 0.1, y: 0.08, width: 0.46, height: 0.46, rotation: -2, frameStyle: "card" }, { x: 0.48, y: 0.32, width: 0.42, height: 0.5, rotation: 2, zIndex: 1, frameStyle: "polaroid", frameColor: "#e7ebef" }, { x: 0.12, y: 0.62, width: 0.34, height: 0.28, zIndex: 2, frameStyle: "card" }] },
+  { id: "4-open-grid", name: "Open grid", photoCount: 4, categories: ["Grid", "Editorial"],
+    cells: [{ x: 0.08, y: 0.08, width: 0.5, height: 0.5 }, { x: 0.64, y: 0.08, width: 0.28, height: 0.28 }, { x: 0.08, y: 0.64, width: 0.28, height: 0.28 }, { x: 0.42, y: 0.64, width: 0.5, height: 0.28 }] },
+  { id: "4-salon-wall", name: "Salon wall", photoCount: 4, categories: ["Editorial"],
+    cells: [{ x: 0.08, y: 0.1, width: 0.34, height: 0.56 }, { x: 0.5, y: 0.08, width: 0.42, height: 0.32 }, { x: 0.5, y: 0.48, width: 0.26, height: 0.42 }, { x: 0.12, y: 0.74, width: 0.3, height: 0.18 }] },
+  { id: "4-scene-sequence", name: "Scene sequence", photoCount: 4, categories: ["Hero", "Editorial"],
+    cells: [{ x: 0.06, y: 0.06, width: 0.88, height: 0.44 }, { x: 0.06, y: 0.58, width: 0.25, height: 0.28 }, { x: 0.375, y: 0.58, width: 0.25, height: 0.28 }, { x: 0.69, y: 0.58, width: 0.25, height: 0.28 }] },
+  { id: "5-gallery-rhythm", name: "Gallery rhythm", photoCount: 5, categories: ["Grid", "Editorial"],
+    cells: [{ x: 0.06, y: 0.08, width: 0.4, height: 0.4 }, { x: 0.54, y: 0.08, width: 0.4, height: 0.4 }, { x: 0.06, y: 0.58, width: 0.25, height: 0.32 }, { x: 0.375, y: 0.58, width: 0.25, height: 0.32 }, { x: 0.69, y: 0.58, width: 0.25, height: 0.32 }] },
+  { id: "5-memory-board", name: "Memory board", photoCount: 5, categories: ["Creative"],
+    cells: [{ x: 0.06, y: 0.08, width: 0.5, height: 0.48, frameStyle: "card" }, { x: 0.66, y: 0.1, width: 0.26, height: 0.32, frameStyle: "polaroid", rotation: 2 }, { x: 0.12, y: 0.64, width: 0.26, height: 0.28, frameStyle: "card", rotation: -2 }, { x: 0.44, y: 0.6, width: 0.28, height: 0.32, frameStyle: "polaroid", frameColor: "#eadbd3" }, { x: 0.74, y: 0.46, width: 0.18, height: 0.22, frameStyle: "card" }] },
+  { id: "6-masonry-ledger", name: "Masonry ledger", photoCount: 6, categories: ["Grid", "Editorial"],
+    cells: [{ x: 0.06, y: 0.06, width: 0.26, height: 0.54 }, { x: 0.06, y: 0.64, width: 0.26, height: 0.3 }, { x: 0.37, y: 0.06, width: 0.26, height: 0.3 }, { x: 0.37, y: 0.4, width: 0.26, height: 0.54 }, { x: 0.68, y: 0.06, width: 0.26, height: 0.44 }, { x: 0.68, y: 0.54, width: 0.26, height: 0.4 }] },
+  { id: "6-snapshot-index", name: "Snapshot index", photoCount: 6, categories: ["Creative", "Grid"],
+    cells: [{ x: 0.08, y: 0.1, width: 0.24, height: 0.34, frameStyle: "card", rotation: -2 }, { x: 0.38, y: 0.18, width: 0.24, height: 0.34, frameStyle: "card" }, { x: 0.68, y: 0.08, width: 0.24, height: 0.34, frameStyle: "card", rotation: 2 }, { x: 0.08, y: 0.58, width: 0.24, height: 0.34, frameStyle: "card" }, { x: 0.38, y: 0.6, width: 0.24, height: 0.34, frameStyle: "card", rotation: 2 }, { x: 0.68, y: 0.52, width: 0.24, height: 0.34, frameStyle: "card", rotation: -2 }] },
+  { id: "6-horizon-notes", name: "Horizon notes", photoCount: 6, categories: ["Hero", "Editorial"],
+    cells: [{ x: 0.06, y: 0.06, width: 0.88, height: 0.4 }, { x: 0.06, y: 0.52, width: 0.4, height: 0.42 }, { x: 0.52, y: 0.52, width: 0.18, height: 0.18 }, { x: 0.76, y: 0.52, width: 0.18, height: 0.18 }, { x: 0.52, y: 0.76, width: 0.18, height: 0.18 }, { x: 0.76, y: 0.76, width: 0.18, height: 0.18 }] },
+  { id: "7-gallery-wall", name: "Gallery wall", photoCount: 7, categories: ["Featured", "Editorial"],
+    cells: [{ x: 0.06, y: 0.06, width: 0.24, height: 0.28 }, { x: 0.06, y: 0.4, width: 0.24, height: 0.24 }, { x: 0.06, y: 0.7, width: 0.24, height: 0.24 }, { x: 0.36, y: 0.14, width: 0.32, height: 0.54 }, { x: 0.36, y: 0.74, width: 0.32, height: 0.2 }, { x: 0.74, y: 0.06, width: 0.2, height: 0.4 }, { x: 0.74, y: 0.54, width: 0.2, height: 0.32 }] },
+  { id: "7-panorama-index", name: "Panorama index", photoCount: 7, categories: ["Hero", "Grid"],
+    cells: [{ x: 0.06, y: 0.06, width: 0.88, height: 0.36 }, ...[0, 1, 2].flatMap((column) => [0, 1].map((row) => ({ x: 0.06 + column * 0.31, y: 0.5 + row * 0.24, width: 0.26, height: 0.2 })))] },
+  { id: "8-open-contact", name: "Open contact sheet", photoCount: 8, categories: ["Grid", "Editorial"],
+    cells: [0, 1, 2].flatMap((row) => [0, 1, 2].filter((column) => row !== 1 || column !== 1).map((column) => ({ x: 0.06 + column * 0.31, y: 0.06 + row * 0.31, width: 0.26, height: 0.26 }))) },
+  { id: "8-twin-ledger", name: "Twin ledger", photoCount: 8, categories: ["Hero", "Editorial"],
+    cells: [{ x: 0.06, y: 0.06, width: 0.4, height: 0.5 }, { x: 0.54, y: 0.06, width: 0.4, height: 0.5 }, ...[0, 1, 2].flatMap((column) => [0, 1].map((row) => ({ x: 0.06 + column * 0.31, y: 0.62 + row * 0.18, width: 0.26, height: 0.14 })))] },
+  { id: "8-memory-shelf", name: "Memory shelf", photoCount: 8, categories: ["Creative"],
+    cells: [0, 1, 2, 3].flatMap((column) => [0, 1].map((row) => ({ x: 0.06 + column * 0.23, y: 0.12 + row * 0.42 + (column % 2) * 0.05, width: 0.19, height: 0.32, frameStyle: "card" as const, rotation: column % 2 ? 1 : -1, frameColor: row ? "#e7ebef" : "#f4eee4" })) ) },
+  { id: "9-gallery-index", name: "Gallery index", photoCount: 9, categories: ["Grid"],
+    cells: [0, 1, 2].flatMap((row) => [0, 1, 2].map((column) => ({ x: 0.06 + column * 0.31, y: 0.06 + row * 0.31, width: 0.26, height: 0.26 }))) },
+  { id: "12-contact-archive", name: "Contact archive", photoCount: 12, categories: ["Grid"],
+    cells: [0, 1, 2].flatMap((row) => [0, 1, 2, 3].map((column) => ({ x: 0.06 + column * 0.23, y: 0.06 + row * 0.31, width: 0.19, height: 0.26 }))) },
 ] satisfies LayoutDefinition[];
 
 export interface EditorState {

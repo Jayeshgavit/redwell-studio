@@ -10,18 +10,22 @@ export interface DockPanelContent {
 }
 
 interface ResizableDockProps {
+  compact?: boolean;
+  focusedChrome?: boolean;
   panels: DockPanelContent[];
   openPanelIds: EditorTool[];
   activePanelId: EditorTool;
-  width: number;
+  width: number | null;
   onWidthChange: (width: number) => void;
   onSelectPanel: (panelId: EditorTool) => void;
   onClosePanel: (panelId: EditorTool) => void;
+  onCollapse?: () => void;
   onDockPanel: (panelId: EditorTool) => void;
 }
 
 const PANEL_DRAG_TYPE = "application/x-redwell-editor-tool";
 const MIN_DOCK_WIDTH = 260;
+const MIN_CAROUSEL_DOCK_WIDTH = 320;
 const MAX_DOCK_WIDTH = 520;
 const LEFT_TOOLBAR_WIDTH = 64;
 const MIN_CANVAS_WIDTH = 300;
@@ -33,6 +37,8 @@ interface ResizeDrag {
 }
 
 export function ResizableDock({
+  compact = false,
+  focusedChrome = false,
   panels,
   openPanelIds,
   activePanelId,
@@ -40,26 +46,40 @@ export function ResizableDock({
   onWidthChange,
   onSelectPanel,
   onClosePanel,
+  onCollapse,
   onDockPanel,
 }: ResizableDockProps) {
   const resizeDragRef = useRef<ResizeDrag | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [isDropTarget, setIsDropTarget] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(1024);
+  const [resizeWidth, setResizeWidth] = useState<number | null>(null);
+  const pendingWidthRef = useRef<number | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
   const activeTool = EDITOR_TOOLS.find((tool) => tool.id === activePanelId) ?? EDITOR_TOOLS[0];
   const isOpen = openPanelIds.length > 0;
+  const resolveWidth = (requested = width, screenWidth = viewportWidth) => clampDockWidth(
+    requested ?? getAutoDockWidth(screenWidth, activePanelId), screenWidth, compact, activePanelId
+  );
+  const displayedWidth = resolveWidth(resizeWidth ?? width);
+
+  useEffect(() => () => {
+    if (resizeFrameRef.current !== null) window.cancelAnimationFrame(resizeFrameRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (focusedChrome) document.getElementById(`dock-tab-${activePanelId}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activePanelId, focusedChrome, openPanelIds]);
 
   useEffect(() => {
     const clampToViewport = () => {
       setViewportWidth(window.innerWidth);
-      const nextWidth = clampDockWidth(width, window.innerWidth);
-      if (nextWidth !== width) onWidthChange(nextWidth);
     };
 
     clampToViewport();
     window.addEventListener("resize", clampToViewport);
     return () => window.removeEventListener("resize", clampToViewport);
-  }, [onWidthChange, width]);
+  }, []);
 
   const beginResize = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -67,7 +87,7 @@ export function ResizableDock({
     resizeDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
-      startWidth: width,
+      startWidth: resolveWidth(width, window.innerWidth),
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setIsResizing(true);
@@ -76,23 +96,44 @@ export function ResizableDock({
   const resize = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = resizeDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    onWidthChange(clampDockWidth(
+    const nextWidth = resolveWidth(
       drag.startWidth + drag.startX - event.clientX,
       window.innerWidth
-    ));
+    );
+    if (!compact) {
+      onWidthChange(nextWidth);
+      return;
+    }
+    // Keep transient drag state in the dock; persist the choice on release.
+    pendingWidthRef.current = nextWidth;
+    if (resizeFrameRef.current !== null) return;
+    resizeFrameRef.current = window.requestAnimationFrame(() => {
+      resizeFrameRef.current = null;
+      setResizeWidth(pendingWidthRef.current);
+    });
+  };
+
+  const endResize = () => {
+    if (!resizeDragRef.current) return;
+    if (resizeFrameRef.current !== null) window.cancelAnimationFrame(resizeFrameRef.current);
+    resizeFrameRef.current = null;
+    if (compact && pendingWidthRef.current !== null) onWidthChange(pendingWidthRef.current);
+    pendingWidthRef.current = null;
+    resizeDragRef.current = null;
+    setResizeWidth(null);
+    setIsResizing(false);
   };
 
   const finishResize = (event: React.PointerEvent<HTMLDivElement>) => {
     if (resizeDragRef.current?.pointerId !== event.pointerId) return;
-    resizeDragRef.current = null;
-    setIsResizing(false);
+    endResize();
   };
 
   const handleResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
     const direction = event.key === "ArrowLeft" ? 1 : -1;
-    onWidthChange(clampDockWidth(width + direction * 16, window.innerWidth));
+    onWidthChange(resolveWidth(resolveWidth(width, window.innerWidth) + direction * 16, window.innerWidth));
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLElement>) => {
@@ -109,12 +150,13 @@ export function ResizableDock({
     if (isEditorTool(panelId)) onDockPanel(panelId);
   };
 
-  const dockStyle = { "--dock-width": `${width}px` } as CSSProperties;
+  const dockStyle = { "--dock-width": `${displayedWidth}px` } as CSSProperties;
   const tabColumns = { gridTemplateColumns: "repeat(auto-fit, minmax(4.25rem, 1fr))" };
 
   return (
     <aside
       id="redwell-right-dock"
+      data-compact={compact}
       aria-label="Right workspace dock"
       aria-hidden={!isOpen}
       onDragOver={handleDragOver}
@@ -124,27 +166,24 @@ export function ResizableDock({
         }
       }}
       onDrop={handleDrop}
-      className={`${isOpen ? "flex" : "hidden"} relative min-h-0 max-h-[44dvh] w-full shrink-0 flex-col overflow-hidden border-t border-brand-border bg-brand-surface md:h-full md:max-h-none md:w-[var(--dock-width)] md:max-w-[min(48vw,520px)] md:border-l md:border-t-0 ${isDropTarget ? "ring-2 ring-inset ring-redwell-500" : ""} ${isResizing ? "select-none" : ""}`}
+      className={`${isOpen ? "flex" : "hidden"} editor-dock relative min-h-0 ${focusedChrome ? "max-h-[34dvh] sm:max-h-[44dvh]" : "max-h-[44dvh]"} w-full shrink-0 flex-col overflow-hidden border-t border-brand-border bg-brand-surface md:h-full md:max-h-none md:w-[var(--dock-width)] md:max-w-[min(48vw,520px)] md:border-l md:border-t-0 ${isDropTarget ? "ring-2 ring-inset ring-redwell-500" : ""} ${isResizing ? "select-none" : ""}`}
       style={dockStyle}
     >
       <div
         role="separator"
         aria-label="Resize right dock"
         aria-orientation="vertical"
-        aria-valuemin={MIN_DOCK_WIDTH}
-        aria-valuemax={getMaxDockWidth(viewportWidth)}
-        aria-valuenow={Math.round(width)}
-        aria-valuetext={`${Math.round(width)} pixels wide`}
+        aria-valuemin={compact ? MIN_CAROUSEL_DOCK_WIDTH : MIN_DOCK_WIDTH}
+        aria-valuemax={getMaxDockWidth(viewportWidth, compact, activePanelId)}
+        aria-valuenow={Math.round(displayedWidth)}
+        aria-valuetext={`${Math.round(displayedWidth)} pixels wide`}
         aria-controls="redwell-right-dock"
         tabIndex={0}
         onPointerDown={beginResize}
         onPointerMove={resize}
         onPointerUp={finishResize}
         onPointerCancel={finishResize}
-        onLostPointerCapture={() => {
-          resizeDragRef.current = null;
-          setIsResizing(false);
-        }}
+        onLostPointerCapture={endResize}
         onKeyDown={handleResizeKeyDown}
         title="Drag to resize the dock"
         className="group absolute inset-y-0 left-0 z-20 hidden w-2 touch-none cursor-col-resize items-center justify-center bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-redwell-600 md:flex"
@@ -162,8 +201,8 @@ export function ResizableDock({
         <nav
           role="tablist"
           aria-label="Docked editor panels"
-          className="grid min-w-0 flex-1 gap-1"
-          style={tabColumns}
+          className={focusedChrome ? "flex min-w-0 flex-1 gap-1 overflow-x-auto" : "grid min-w-0 flex-1 gap-1"}
+          style={focusedChrome ? undefined : tabColumns}
         >
           {openPanelIds.map((panelId) => {
             const tool = EDITOR_TOOLS.find((item) => item.id === panelId);
@@ -176,6 +215,7 @@ export function ResizableDock({
                 id={`dock-tab-${panelId}`}
                 type="button"
                 role="tab"
+                tabIndex={focusedChrome && !isActive ? -1 : 0}
                 aria-selected={isActive}
                 aria-controls={`dock-panel-${panelId}`}
                 onClick={() => onSelectPanel(panelId)}
@@ -192,9 +232,9 @@ export function ResizableDock({
                   onSelectPanel(nextPanelId);
                   document.getElementById(`dock-tab-${nextPanelId}`)?.focus();
                 }}
-                className={`flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-md px-1.5 text-xs font-medium whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500 ${isActive ? "bg-brand-accent-soft text-redwell-700" : "text-brand-muted hover:bg-brand-neutral hover:text-brand-ink"}`}
+                className={`flex min-h-9 min-w-0 ${focusedChrome ? "shrink-0 px-3" : "px-1.5"} items-center justify-center gap-1 rounded-md text-xs font-medium whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500 ${isActive ? "bg-brand-accent-soft text-redwell-700" : "text-brand-muted hover:bg-brand-neutral hover:text-brand-ink"}`}
               >
-                <span aria-hidden="true">{tool.icon}</span>
+                {!focusedChrome && <span aria-hidden="true">{tool.icon}</span>}
                 <span className="truncate">{tool.label}</span>
               </button>
             );
@@ -205,16 +245,17 @@ export function ResizableDock({
           onClick={() => onClosePanel(activePanelId)}
           aria-label={`Close ${activeTool.label} panel`}
           title={`Close ${activeTool.label}`}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-lg text-brand-muted hover:bg-brand-neutral hover:text-brand-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-lg text-brand-muted hover:bg-brand-neutral hover:text-brand-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500"
         >
           ×
         </button>
+        {onCollapse && <button type="button" onClick={onCollapse} aria-label="Collapse tool dock" title="Collapse tool dock · reopen from the tool rail" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-brand-muted hover:bg-brand-neutral hover:text-brand-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redwell-500">→</button>}
       </div>
 
       {activeTool && (
         <div className="flex min-h-0 flex-1 flex-col">
           {panels.map((panel) => (
-            <ContextPanel key={panel.id} panelId={panel.id} isActive={panel.id === activePanelId && isOpen}>
+            <ContextPanel key={panel.id} panelId={panel.id} isActive={panel.id === activePanelId && isOpen} focusedChrome={focusedChrome}>
               {panel.content}
             </ContextPanel>
           ))}
@@ -224,19 +265,26 @@ export function ResizableDock({
   );
 }
 
-function clampDockWidth(width: number, viewportWidth: number) {
-  return Math.max(MIN_DOCK_WIDTH, Math.min(getMaxDockWidth(viewportWidth), width));
+function clampDockWidth(width: number, viewportWidth: number, compact = false, panelId?: EditorTool) {
+  return Math.max(compact ? MIN_CAROUSEL_DOCK_WIDTH : MIN_DOCK_WIDTH, Math.min(getMaxDockWidth(viewportWidth, compact, panelId), width));
 }
 
-function getMaxDockWidth(viewportWidth: number) {
+function getMaxDockWidth(viewportWidth: number, compact = false, panelId?: EditorTool) {
+  const hasCardGrid = panelId === "photos" || panelId === "layouts" || panelId === "elements";
   return Math.max(
-    MIN_DOCK_WIDTH,
+    compact ? MIN_CAROUSEL_DOCK_WIDTH : MIN_DOCK_WIDTH,
     Math.min(
-      MAX_DOCK_WIDTH,
-      Math.floor(viewportWidth * 0.48),
-      viewportWidth - LEFT_TOOLBAR_WIDTH - MIN_CANVAS_WIDTH
+      compact ? (hasCardGrid ? 520 : 420) : MAX_DOCK_WIDTH,
+      Math.floor(viewportWidth * 0.32),
+      viewportWidth - LEFT_TOOLBAR_WIDTH - (compact ? 380 : MIN_CANVAS_WIDTH)
     )
   );
+}
+
+function getAutoDockWidth(viewportWidth: number, panelId: EditorTool) {
+  if (viewportWidth < 1440) return 360;
+  const hasCardGrid = panelId === "photos" || panelId === "layouts" || panelId === "elements";
+  return Math.floor(viewportWidth * (hasCardGrid ? 0.24 : 0.2));
 }
 
 function isEditorTool(value: string): value is EditorTool {

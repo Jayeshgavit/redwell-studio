@@ -17,6 +17,24 @@ export interface ArtworkComposition {
   storyText?: CarouselStoryTextItem[];
 }
 
+/** Uploaded image sources shared by the existing live-preview asset transport. */
+export function getArtworkImageSources(composition: ArtworkComposition): string[] {
+  const background = composition.collageStyle.backgroundImage;
+  return [...new Set([...composition.photos.map((photo) => photo.src), ...(background ? [background.src] : [])])];
+}
+
+export function remapArtworkImageSources(composition: ArtworkComposition, sources: Map<string, string>): ArtworkComposition {
+  const background = composition.collageStyle.backgroundImage;
+  return {
+    ...composition,
+    photos: composition.photos.map((photo) => ({ ...photo, src: sources.get(photo.src) ?? photo.src })),
+    collageStyle: background ? {
+      ...composition.collageStyle,
+      backgroundImage: { ...background, src: sources.get(background.src) ?? background.src },
+    } : composition.collageStyle,
+  };
+}
+
 export type ArtworkLayerKind = "photo" | "storyText" | "element";
 export type LayerDirection = "forward" | "backward" | "front" | "back";
 
