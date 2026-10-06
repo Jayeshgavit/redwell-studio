@@ -1,19 +1,19 @@
 import type { DocumentMode } from "@/types/editor";
-import { IconArrowBackUp, IconArrowForwardUp, IconEye, IconTrash } from "@tabler/icons-react";
+import { IconArrowBackUp, IconArrowForwardUp, IconEye, IconPlus } from "@tabler/icons-react";
 
 interface TopBarProps {
   isCollage?: boolean;
   documentMode?: DocumentMode;
   onPreview: () => void;
   onExport: () => void;
-  onClear: () => void;
+  onNew: () => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
 }
 
-export function TopBar({ isCollage = false, documentMode, onPreview, onExport, onClear, canUndo, canRedo, onUndo, onRedo }: TopBarProps) {
+export function TopBar({ isCollage = false, documentMode, onPreview, onExport, onNew, canUndo, canRedo, onUndo, onRedo }: TopBarProps) {
   if (isCollage || documentMode === "carousel") {
     const quietAction = "flex h-9 w-9 shrink-0 items-center justify-center gap-1.5 rounded-md text-brand-muted transition-colors hover:bg-brand-neutral hover:text-brand-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent disabled:cursor-not-allowed disabled:opacity-30 sm:w-auto sm:px-2.5 sm:text-xs sm:font-medium";
     return (
@@ -38,9 +38,9 @@ export function TopBar({ isCollage = false, documentMode, onPreview, onExport, o
             <span className="hidden sm:inline">Redo</span>
           </button>
         </div>
-        <button type="button" onClick={onClear} aria-label="Clear project" title="Clear project" className={quietAction}>
-          <IconTrash size={17} aria-hidden="true" />
-          <span className="hidden sm:inline">Clear</span>
+        <button type="button" onClick={onNew} aria-label="New project" title="New project" className="flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-redwell-200 bg-brand-accent-soft px-2.5 text-xs font-semibold text-redwell-700 transition-colors hover:border-redwell-300 hover:bg-redwell-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-paper sm:px-3">
+          <IconPlus size={17} aria-hidden="true" />
+          <span>New</span>
         </button>
         <button type="button" onClick={onPreview} aria-label={documentMode === "carousel" ? "Preview story" : "Preview in a new tab"} title={documentMode === "carousel" ? "Preview story" : "Preview in a new tab"} className={`${quietAction} border border-brand-border text-brand-ink`}>
           <IconEye size={18} aria-hidden="true" />
@@ -89,10 +89,10 @@ export function TopBar({ isCollage = false, documentMode, onPreview, onExport, o
         </div>
         <button
           type="button"
-          onClick={onClear}
-          className="rounded-md px-2.5 py-2 text-xs font-semibold text-brand-muted transition-colors hover:bg-brand-accent-soft hover:text-redwell-700 focus:outline-none focus:ring-2 focus:ring-redwell-500 sm:px-3 sm:text-sm"
+          onClick={onNew}
+          className="rounded-md border border-redwell-200 bg-brand-accent-soft px-2.5 py-2 text-xs font-semibold text-redwell-700 transition-colors hover:border-redwell-300 hover:bg-redwell-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent sm:px-3 sm:text-sm"
         >
-          Clear
+          New
         </button>
         <button
           type="button"

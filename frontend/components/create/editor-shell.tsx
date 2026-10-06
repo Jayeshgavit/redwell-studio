@@ -27,7 +27,7 @@ import { CarouselPreviewDialog } from "./carousel-preview-dialog";
 import { CarouselStoryCopy } from "./carousel-story-copy";
 import { CAROUSEL_STORY_LAYOUTS } from "./carousel-story-templates";
 import { PhotoProvider, usePhotos, type HistoryBehavior } from "./photo-context";
-import { CANVAS_FORMATS, COLLAGE_LAYOUTS, EDITOR_TOOLS, type DocumentMode, type EditorTool } from "@/types/editor";
+import { CANVAS_FORMATS, COLLAGE_LAYOUTS, DEFAULT_COLLAGE_STYLE, EDITOR_TOOLS, type CarouselSlide, type CollageStyle, type DocumentMode, type EditorTool } from "@/types/editor";
 import type { CanvasElement, CarouselStoryTextItem } from "@/types/editor";
 import { getArtworkImageSources, getArtworkLayerStack, type ArtworkLayerEntry } from "./artwork-composition";
 import { getCatalogElement } from "./elements/catalog";
@@ -42,6 +42,17 @@ import {
 } from "./live-preview-protocol";
 
 const WORKSPACE_STORAGE_KEY = "redwell-studio:workspace:v1";
+
+function hasProjectArtwork(
+  project: Pick<CarouselSlide, "photos" | "elements" | "storyText" | "collageStyle">,
+  defaults: CollageStyle = DEFAULT_COLLAGE_STYLE
+) {
+  return project.photos.length > 0 || project.elements.length > 0 ||
+    (project.storyText ?? []).some((item) => item.text.trim().length > 0) ||
+    Boolean(project.collageStyle.backgroundImage) ||
+    (Object.keys(DEFAULT_COLLAGE_STYLE) as Array<keyof typeof DEFAULT_COLLAGE_STYLE>)
+      .some((key) => project.collageStyle[key] !== defaults[key]);
+}
 const COLLAGE_PANEL_HELP: Record<EditorTool, string> = {
   photos: "Upload, select, and adjust your images.",
   layouts: "Find a composition that gives each photo room.",
@@ -746,6 +757,18 @@ function EditorContent() {
     clearProject();
     setSelectedLayer(null);
     setIsClearProjectOpen(false);
+    handleFitToCanvas();
+  };
+  const handleNewProject = () => {
+    const hasWork = isCollage
+      ? hasProjectArtwork({ photos, elements, storyText, collageStyle })
+      : Boolean(carousel && (
+        carousel.slides.length > 1 || carousel.templateId ||
+        (carousel.themeId && carousel.themeId !== "redwell") ||
+        carousel.slides.some((slide) => hasProjectArtwork(slide, { ...DEFAULT_COLLAGE_STYLE, ...slide.themeDefaults }))
+      ));
+    if (hasWork) setIsClearProjectOpen(true);
+    else handleClearProject();
   };
 
   return (
@@ -755,7 +778,7 @@ function EditorContent() {
         documentMode={documentMode}
         onPreview={isCollage ? handleOpenLivePreview : () => setIsCarouselPreviewOpen(true)}
         onExport={handleExport}
-        onClear={() => setIsClearProjectOpen(true)}
+        onNew={handleNewProject}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={undo}
@@ -880,6 +903,10 @@ function EditorContent() {
         open={isClearProjectOpen}
         onCancel={() => setIsClearProjectOpen(false)}
         onConfirm={handleClearProject}
+        onExport={() => {
+          setIsClearProjectOpen(false);
+          handleExport();
+        }}
       />
       {isAddSlideOpen && !isCollage && <CarouselAddSlideDialog onClose={() => setIsAddSlideOpen(false)} onAdd={handleAddCarouselSlide} />}
       <CarouselTemplatePicker
