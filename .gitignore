@@ -4,6 +4,8 @@ node_modules/
 # Next.js build output
 .next/
 .next-*/
+# Next.js Server Actions encryption cache, including custom build directories
+.rscinfo
 out/
 build/
 
